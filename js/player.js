@@ -1,21 +1,15 @@
 /**
- * CloudTune - Audio Player Module
- * 
- * Supports two playback modes:
- * - SA mode: Direct stream URL from backend (supports seeking via Range requests)
- * - OAuth2 mode: Blob URL (must download entire file before playback)
+ * CloudTune - Audio Player Module (SA-only)
+ * Uses backend stream URL with Range request support for seeking.
  */
 
 const Player = (() => {
   let audio = null;
   let playlist = [];
   let currentIndex = -1;
-  let currentBlobUrl = null;
-  let currentStreamUrl = null;
   let isPlaying = false;
   let isShuffle = false;
-  let repeatMode = 'none';
-  let isLoading = false;
+  let repeatMode = 'none'; // 'none' | 'all' | 'one'
   let volume = 1;
   let isMuted = false;
 
@@ -26,18 +20,11 @@ const Player = (() => {
 
   function init() {
     audio = new Audio();
-    audio.preload = 'metadata';
+    audio.preload = 'auto';
     audio.volume = volume;
 
-    audio.addEventListener('play', () => {
-      isPlaying = true;
-      notifyStateChange();
-    });
-
-    audio.addEventListener('pause', () => {
-      isPlaying = false;
-      notifyStateChange();
-    });
+    audio.addEventListener('play', () => { isPlaying = true; notifyStateChange(); });
+    audio.addEventListener('pause', () => { isPlaying = false; notifyStateChange(); });
 
     audio.addEventListener('timeupdate', () => {
       if (onTimeUpdate) {
@@ -50,38 +37,22 @@ const Player = (() => {
     });
 
     audio.addEventListener('loadedmetadata', () => {
-      isLoading = false;
       notifyStateChange();
       if (onTimeUpdate) {
-        onTimeUpdate({
-          currentTime: audio.currentTime,
-          duration: audio.duration,
-          progress: 0,
-        });
+        onTimeUpdate({ currentTime: audio.currentTime, duration: audio.duration, progress: 0 });
       }
     });
 
-    audio.addEventListener('ended', () => {
-      handleTrackEnd();
-    });
+    audio.addEventListener('ended', () => handleTrackEnd());
 
     audio.addEventListener('error', (e) => {
-      isLoading = false;
-      isPlaying = false;
       console.error('Audio error:', e);
       if (onError) onError(e);
       notifyStateChange();
     });
 
-    audio.addEventListener('waiting', () => {
-      isLoading = true;
-      notifyStateChange();
-    });
-
-    audio.addEventListener('canplay', () => {
-      isLoading = false;
-      notifyStateChange();
-    });
+    audio.addEventListener('waiting', () => notifyStateChange());
+    audio.addEventListener('canplay', () => notifyStateChange());
 
     const savedVolume = Config.get('volume');
     if (savedVolume !== undefined) {
@@ -89,14 +60,13 @@ const Player = (() => {
       audio.volume = volume;
     }
 
-    console.log('Player module initialized');
+    console.log('Player module initialized (SA mode)');
   }
 
   function notifyStateChange() {
     if (onStateChange) {
       onStateChange({
         isPlaying,
-        isLoading,
         currentIndex,
         currentTrack: getCurrentTrack(),
         duration: audio ? audio.duration : 0,
@@ -110,75 +80,36 @@ const Player = (() => {
   }
 
   function handleTrackEnd() {
-    switch (repeatMode) {
-      case 'one':
-        playCurrent();
-        break;
-      case 'all':
-        if (currentIndex < playlist.length - 1) {
-          next();
-        } else {
-          currentIndex = 0;
-          playCurrent();
-        }
-        break;
-      default:
-        if (currentIndex < playlist.length - 1) {
-          next();
-        } else {
-          isPlaying = false;
-          notifyStateChange();
-        }
+    if (repeatMode === 'one') {
+      audio.currentTime = 0;
+      audio.play();
+    } else if (repeatMode === 'all') {
+      currentIndex = (currentIndex + 1) % playlist.length;
+      playCurrent();
+    } else {
+      if (currentIndex < playlist.length - 1) {
+        next();
+      } else {
+        isPlaying = false;
+        notifyStateChange();
+      }
     }
   }
 
   async function playCurrent() {
     if (currentIndex < 0 || currentIndex >= playlist.length) return;
-
     const track = playlist[currentIndex];
-    isLoading = true;
-    notifyStateChange();
-
-    // Clean up previous URLs
-    cleanupUrls();
 
     try {
-      const isSA = Config.isServiceAccountMode();
-
-      if (isSA) {
-        // SA mode: Use backend stream URL directly
-        // This supports Range requests and seeking
-        currentStreamUrl = `/api/stream/${track.id}`;
-        audio.src = currentStreamUrl;
-        await audio.play();
-      } else {
-        // OAuth2 mode: Fetch as blob, then play
-        const blobUrl = await Drive.fetchAudioBlob(track.id);
-        currentBlobUrl = blobUrl;
-        audio.src = blobUrl;
-        await audio.play();
-      }
-
-      if (onTrackChange) {
-        onTrackChange(track, currentIndex);
-      }
-
+      const streamUrl = Drive.getStreamUrl(track.id);
+      audio.src = streamUrl;
+      await audio.play();
+      if (onTrackChange) onTrackChange(track, currentIndex);
       Config.set('lastTrackIndex', currentIndex);
     } catch (error) {
       console.error('Failed to play track:', error);
-      isLoading = false;
-      isPlaying = false;
-      notifyStateChange();
       if (onError) onError(error);
     }
-  }
-
-  function cleanupUrls() {
-    if (currentBlobUrl) {
-      Drive.revokeBlobUrl(currentBlobUrl);
-      currentBlobUrl = null;
-    }
-    currentStreamUrl = null;
   }
 
   function setPlaylist(files, startIndex = 0) {
@@ -196,31 +127,16 @@ const Player = (() => {
     }
   }
 
-  function pause() {
-    if (audio) audio.pause();
-  }
-
-  function resume() {
-    if (audio && audio.src && !isPlaying) {
-      audio.play().catch(e => console.error('Resume failed:', e));
-    }
-  }
-
-  function togglePlay() {
-    if (isPlaying) pause();
-    else resume();
-  }
+  function pause() { if (audio) audio.pause(); }
+  function resume() { if (audio && audio.src) audio.play().catch(() => {}); }
+  function togglePlay() { isPlaying ? pause() : resume(); }
 
   function next() {
     if (playlist.length === 0) return;
     if (isShuffle) {
-      let newIdx = currentIndex;
-      if (playlist.length > 1) {
-        while (newIdx === currentIndex) {
-          newIdx = Math.floor(Math.random() * playlist.length);
-        }
-      }
-      currentIndex = newIdx;
+      let ni = currentIndex;
+      while (playlist.length > 1 && ni === currentIndex) ni = Math.floor(Math.random() * playlist.length);
+      currentIndex = ni;
     } else {
       currentIndex = (currentIndex + 1) % playlist.length;
     }
@@ -229,33 +145,28 @@ const Player = (() => {
 
   function previous() {
     if (playlist.length === 0) return;
-    if (audio && audio.currentTime > 3) {
-      audio.currentTime = 0;
-      return;
-    }
+    if (audio && audio.currentTime > 3) { audio.currentTime = 0; return; }
     if (isShuffle) {
-      let newIdx = currentIndex;
-      if (playlist.length > 1) {
-        while (newIdx === currentIndex) {
-          newIdx = Math.floor(Math.random() * playlist.length);
-        }
-      }
-      currentIndex = newIdx;
+      let ni = currentIndex;
+      while (playlist.length > 1 && ni === currentIndex) ni = Math.floor(Math.random() * playlist.length);
+      currentIndex = ni;
     } else {
       currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
     }
     playCurrent();
   }
 
-  function seek(time) {
+  /** Seek to a percentage (0-100) of the track */
+  function seekByPercent(pct) {
     if (audio && audio.duration) {
-      audio.currentTime = Math.min(time, audio.duration);
+      audio.currentTime = Math.min((pct / 100) * audio.duration, audio.duration);
     }
   }
 
-  function seekByPercent(percent) {
+  /** Seek forward/backward by seconds */
+  function seekBy(seconds) {
     if (audio && audio.duration) {
-      audio.currentTime = (percent / 100) * audio.duration;
+      audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
     }
   }
 
@@ -272,42 +183,25 @@ const Player = (() => {
     notifyStateChange();
   }
 
-  function toggleShuffle() {
-    isShuffle = !isShuffle;
-    notifyStateChange();
-  }
+  function toggleShuffle() { isShuffle = !isShuffle; notifyStateChange(); }
 
   function cycleRepeatMode() {
     const modes = ['none', 'all', 'one'];
-    const idx = modes.indexOf(repeatMode);
-    repeatMode = modes[(idx + 1) % modes.length];
+    repeatMode = modes[(modes.indexOf(repeatMode) + 1) % modes.length];
     notifyStateChange();
   }
 
   function getCurrentTrack() {
-    if (currentIndex >= 0 && currentIndex < playlist.length) {
-      return playlist[currentIndex];
-    }
-    return null;
+    return (currentIndex >= 0 && currentIndex < playlist.length) ? playlist[currentIndex] : null;
   }
-
-  function getPlaylist() { return playlist; }
-  function getCurrentIndex() { return currentIndex; }
-  function getDuration() { return audio ? audio.duration : 0; }
-  function getCurrentTime() { return audio ? audio.currentTime : 0; }
 
   function getState() {
     return {
-      isPlaying,
-      isLoading,
-      currentIndex,
+      isPlaying, currentIndex,
       currentTrack: getCurrentTrack(),
-      duration: getDuration(),
-      currentTime: getCurrentTime(),
-      volume,
-      isMuted,
-      isShuffle,
-      repeatMode,
+      duration: audio ? audio.duration : 0,
+      currentTime: audio ? audio.currentTime : 0,
+      volume, isMuted, isShuffle, repeatMode,
       playlistLength: playlist.length,
     };
   }
@@ -320,37 +214,17 @@ const Player = (() => {
   }
 
   function destroy() {
-    if (audio) {
-      audio.pause();
-      audio.src = '';
-    }
-    cleanupUrls();
+    if (audio) { audio.pause(); audio.src = ''; }
     playlist = [];
     currentIndex = -1;
   }
 
   return {
-    init,
-    setPlaylist,
-    play,
-    pause,
-    resume,
-    togglePlay,
-    next,
-    previous,
-    seek,
-    seekByPercent,
-    setVolume,
-    toggleMute,
-    toggleShuffle,
-    cycleRepeatMode,
-    getCurrentTrack,
-    getPlaylist,
-    getCurrentIndex,
-    getDuration,
-    getCurrentTime,
-    getState,
-    setCallbacks,
-    destroy,
+    init, setPlaylist, play, pause, resume, togglePlay,
+    next, previous,
+    seekByPercent, seekBy,
+    setVolume, toggleMute,
+    toggleShuffle, cycleRepeatMode,
+    getCurrentTrack, getState, setCallbacks, destroy,
   };
 })();
