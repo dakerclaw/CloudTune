@@ -1,0 +1,42 @@
+# CloudTune - Service Account Key 配置说明
+
+## ⚠️ 重要：不要将此文件提交到版本控制！
+
+此文件为 Service Account 密钥占位符。
+请将你的 Google Cloud Service Account JSON 密钥文件复制到此位置，
+文件名必须为 `sa-key.json`。
+
+## 获取 Service Account 密钥
+
+1. 打开 [Google Cloud Console](https://console.cloud.google.com/)
+2. 创建新项目或选择已有项目
+3. 启用 **Google Drive API**
+4. 进入 **IAM & Admin → Service Accounts**
+5. 点击 **Create Service Account**
+   - 名称：随意（例如 cloudtune-player）
+   - 角色：不需要授予项目角色
+6. 点击 **Create Key** → 选择 **JSON** → 下载
+7. 将下载的 JSON 文件重命名为 `sa-key.json` 并放到此目录
+
+## 共享音乐文件夹
+
+1. 记下 sa-key.json 中 `client_email` 的值
+2. 在 Google Drive 中，右键你的音乐文件夹 → **共享**
+3. 添加 SA 的 email 地址，权限选择 **Viewer**（查看者）
+4. 复制文件夹 ID（从 URL 中提取）
+
+## 文件夹 ID
+
+文件夹 URL 格式：
+`https://drive.google.com/drive/folders/FOLDER_ID_HERE`
+
+复制 `FOLDER_ID_HERE` 部分，设置为环境变量：
+
+```bash
+export FOLDER_ID=你的文件夹ID
+```
+
+或在启动时：
+```bash
+FOLDER_ID=你的文件夹ID node server.js
+```

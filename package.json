@@ -1,0 +1,14 @@
+{
+  "name": "cloudtune-server",
+  "version": "1.0.0",
+  "description": "CloudTune music player backend with Google Drive Service Account",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "google-auth-library": "^9.15.0"
+  }
+}

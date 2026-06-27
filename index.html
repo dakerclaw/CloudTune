@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>CloudTune - 云端音乐播放器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- === Login Screen === -->
+  <div id="loginScreen" class="screen active">
+    <div class="login-logo">
+      <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+    </div>
+    <h1 class="login-title">CloudTune</h1>
+    <p class="login-subtitle">从 Google Drive 播放你的音乐</p>
+
+    <!-- SA Mode Section (shown when backend is available) -->
+    <div id="saModeSection" class="login-config" style="display:none">
+      <div class="sa-info-box">
+        <div class="sa-info-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+        </div>
+        <div class="sa-info-text">
+          <strong>Service Account 模式</strong>
+          <p>后端服务器已配置 Service Account，无需用户认证。<br>只需将你的音乐文件夹共享给以下邮箱即可：</p>
+          <span id="saEmailDisplay" class="sa-email"></span>
+        </div>
+      </div>
+      <div class="config-field">
+        <label class="config-label" for="saFolderInput">音乐文件夹 ID</label>
+        <input type="text" id="saFolderInput" class="config-input" placeholder="输入 Google Drive 音乐文件夹 ID">
+        <p class="config-hint">
+          在 Google Drive 中右键文件夹 → 共享 → 添加上方邮箱。<br>
+          然后从文件夹 URL 提取 ID：
+          https://drive.google.com/drive/folders/<strong>FOLDER_ID</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- OAuth2 Mode Section (shown when backend is NOT available) -->
+    <div id="oauthModeSection" class="login-config">
+      <div class="config-field">
+        <label class="config-label" for="clientIdInput">Google Client ID</label>
+        <input type="text" id="clientIdInput" class="config-input" placeholder="输入你的 Google OAuth2 Client ID">
+        <p class="config-hint">
+          需要 Google Cloud 项目并启用 Drive API。
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">创建凭证 →</a>
+        </p>
+      </div>
+      <div class="config-field">
+        <label class="config-label" for="folderIdInput">Drive 文件夹 ID（可选）</label>
+        <input type="text" id="folderIdInput" class="config-input" placeholder="留空则搜索所有音频文件">
+        <p class="config-hint">
+          从 Google Drive 文件夹 URL 中提取 ID。
+          例如：https://drive.google.com/drive/folders/<strong>_FOLDER_ID_</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- SA Connect Button -->
+    <button id="saConnectBtn" class="login-btn" disabled style="display:none">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+      开始播放
+    </button>
+
+    <!-- OAuth2 Connect Button -->
+    <button id="loginBtn" class="login-btn" disabled>
+      <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.28v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      连接 Google Drive
+    </button>
+    <div id="loginError" class="login-error" style="display:none"></div>
+  </div>
+
+  <!-- === Main App Screen === -->
+  <div id="appScreen" class="screen">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+      </div>
+      <span class="header-title">CloudTune</span>
+      <span id="modeIndicator" class="mode-indicator" style="display:none"></span>
+      <div class="header-search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" class="search-input" placeholder="搜索歌曲...">
+      </div>
+      <div class="header-actions">
+        <button id="folderBtn" class="header-btn" title="文件夹">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+        </button>
+        <button id="settingsBtn" class="header-btn" title="设置">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </button>
+        <button id="logoutBtn" class="header-btn" title="退出登录">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 9H9v2h9.17l-2.58 2.58L17 15l5-5zM3 3v18h9v-2H5V5h7V3H3z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="songs">歌曲列表</button>
+      <button class="tab-btn" data-tab="playing">正在播放</button>
+    </nav>
+
+    <!-- Content -->
+    <main class="app-content">
+      <!-- Songs Tab -->
+      <div id="songsTab" class="tab-content active">
+        <div id="loadingState" class="empty-state" style="display:none">
+          <div class="spinner spinner-lg"></div>
+          <p style="margin-top:16px;color:var(--text-secondary)">正在加载歌曲列表...</p>
+        </div>
+        <div id="emptyState" class="empty-state" style="display:none">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          <h3 class="empty-title">没有找到歌曲</h3>
+          <p class="empty-desc">你的 Google Drive 中没有音频文件，或指定的文件夹中没有音频</p>
+        </div>
+        <div id="songList" class="song-list"></div>
+      </div>
+
+      <!-- Now Playing Tab -->
+      <div id="playingTab" class="tab-content now-playing" style="display:none">
+        <div class="np-art" id="npArt">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="white"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          <div class="np-playing-indicator" id="npIndicator" style="display:none">
+            <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+          </div>
+        </div>
+
+        <div class="np-info">
+          <h2 class="np-title" id="npTitle">未选择歌曲</h2>
+          <p class="np-subtitle" id="npSubtitle">从列表中选择一首歌曲开始播放</p>
+        </div>
+
+        <div class="np-progress">
+          <span class="np-time" id="npCurrentTime">0:00</span>
+          <div class="progress-bar-container" id="npProgressBar">
+            <div class="progress-bar-fill" id="npProgressFill" style="width:0%"></div>
+          </div>
+          <span class="np-time" id="npDuration">0:00</span>
+        </div>
+
+        <div class="np-controls">
+          <button class="ctrl-btn" id="shuffleBtn" title="随机播放">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.63 3.63L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+          </button>
+          <button class="ctrl-btn" id="prevBtn" title="上一曲">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+          <button class="ctrl-btn play-btn" id="playPauseBtn" title="播放/暂停">
+            <svg viewBox="0 0 24 24" fill="currentColor" id="playPauseIcon"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button class="ctrl-btn" id="nextBtn" title="下一曲">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
+          <button class="ctrl-btn" id="repeatBtn" title="循环模式">
+            <svg viewBox="0 0 24 24" fill="currentColor" id="repeatIcon"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+          </button>
+        </div>
+
+        <div class="np-volume">
+          <button class="volume-btn" id="volumeIconBtn" title="音量">
+            <svg viewBox="0 0 24 24" fill="currentColor" id="volumeIcon"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          </button>
+          <div class="volume-slider-container" id="volumeSlider">
+            <div class="volume-slider-fill" id="volumeFill" style="width:100%"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Player Bar -->
+    <div id="playerBar" class="player-bar no-track">
+      <div class="pb-progress-mini" id="pbMiniProgress" style="width:0%"></div>
+      <div class="pb-loading" id="pbLoading" style="display:none">
+        <div class="pb-loading-bar"></div>
+      </div>
+      <div class="pb-art" id="pbArt" style="background:var(--bg-active)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-tertiary)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+      </div>
+      <div class="pb-info" id="pbInfo">
+        <span class="pb-title" id="pbTitle"></span>
+        <span class="pb-meta" id="pbMeta"></span>
+      </div>
+      <div class="pb-controls">
+        <button class="pb-btn" id="pbPrevBtn" title="上一曲">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button class="pb-btn play" id="pbPlayBtn" title="播放/暂停">
+          <svg viewBox="0 0 24 24" fill="currentColor" id="pbPlayIcon"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="pb-btn" id="pbNextBtn" title="下一曲">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Settings Modal === -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal-title">设置</h2>
+      <div class="config-field">
+        <label class="config-label" for="settingsAuthMode">认证模式</label>
+        <select id="settingsAuthMode" class="config-input config-select">
+          <option value="auto">自动检测</option>
+          <option value="oauth2">OAuth2（需要 Client ID）</option>
+          <option value="service-account">Service Account（需要后端服务器）</option>
+        </select>
+        <p class="config-hint">选择「自动检测」时，优先使用 Service Account 后端；后端不可用时回退到 OAuth2。</p>
+      </div>
+      <div class="config-field">
+        <label class="config-label" for="settingsClientId">Google Client ID（OAuth2 模式）</label>
+        <input type="text" id="settingsClientId" class="config-input">
+      </div>
+      <div class="config-field">
+        <label class="config-label" for="settingsFolderId">Drive 文件夹 ID</label>
+        <input type="text" id="settingsFolderId" class="config-input" placeholder="留空搜索全部音频">
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn primary" id="saveSettingsBtn">保存</button>
+        <button class="modal-btn secondary" id="cancelSettingsBtn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Folder Modal === -->
+  <div id="folderModal" class="modal-overlay">
+    <div class="modal">
+      <h2 class="modal-title">选择文件夹</h2>
+      <div id="folderList" class="folder-browser"></div>
+      <div class="modal-actions">
+        <button class="modal-btn secondary" id="allFilesBtn">所有音频文件</button>
+        <button class="modal-btn secondary" id="closeFolderBtn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts (order matters) -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/drive.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
