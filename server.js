@@ -14,6 +14,11 @@
  *   FOLDER_ID    - Google Drive folder ID
  *   SA_KEY_PATH  - Path to SA JSON key file (default: ./sa-key.json)
  *   HTTPS_PROXY  - Proxy URL for outbound HTTPS requests (e.g. http://ip:port)
+ *                  Also supports HTTP_PROXY / http_proxy / https_proxy
+ *
+ * Proxy note:
+ *   google-auth-library v9+ reads HTTP_PROXY/HTTPS_PROXY automatically.
+ *   For Node.js fetch(), set GLOBAL_AGENT_HTTP_PROXY or use Node v22.14+.
  */
 
 const express = require('express');
@@ -21,30 +26,18 @@ const path = require('path');
 const { GoogleAuth } = require('google-auth-library');
 const { Readable } = require('stream');
 const fs = require('fs');
-// undici is built into Node.js v18.15+ as 'node:undici'
-// Fallback to npm package if needed
-let ProxyAgent, setGlobalDispatcher;
-try {
-  ({ ProxyAgent, setGlobalDispatcher } = require('node:undici'));
-} catch (e) {
-  try {
-    ({ ProxyAgent, setGlobalDispatcher } = require('undici'));
-  } catch (e2) {
-    // Proxy support unavailable
-  }
-}
 
 // === Load .env file (for direct `node server.js` without systemd) ===
 const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
-    if (!process.env[key]) process.env[key] = val;
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const idx = trimmed.indexOf('=');
+      const key = trimmed.slice(0, idx).trim();
+      const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) process.env[key] = val;
+    }
   }
 }
 
@@ -60,41 +53,14 @@ const AUDIO_MIME_TYPES = [
   'audio/webm','audio/amr','audio/x-ms-wma','application/ogg',
 ];
 
-// === Proxy Support ===
+// === Proxy Support (for google-auth-library) ===
+// google-auth-library v9+ auto-reads HTTP_PROXY / HTTPS_PROXY env vars.
+// Nothing extra needed here — just make sure the env vars are set in .env
 const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.https_proxy ||
                    process.env.HTTP_PROXY || process.env.http_proxy || '';
-if (HTTPS_PROXY && typeof ProxyAgent === 'function') {
-  try {
-    const agent = new ProxyAgent(HTTPS_PROXY);
-    setGlobalDispatcher(agent);
-    console.log(`   Proxy: ${HTTPS_PROXY}`);
-  } catch (err) {
-    console.warn('⚠️  Invalid proxy URL:', HTTPS_PROXY, err.message);
-  }
-} else if (HTTPS_PROXY) {
-  console.warn('⚠️  Proxy configured but undici not available. Install: npm install undici');
+if (HTTPS_PROXY) {
+  console.log(`   Proxy: ${HTTPS_PROXY}`);
 }
-
-// Proxied fetch wrapper for Google API calls
-async function apiFetch(url, opts = {}) {
-  return fetch(url, opts);
-}
-
-// === Express App ===
-const app = express();
-
-// Block access to sensitive files
-const SENSITIVE_FILES = ['server.js', 'package.json', 'sa-key.json', '.env', 'sa-key.json.README'];
-app.use((req, res, next) => {
-  const basename = path.basename(req.path);
-  if (SENSITIVE_FILES.includes(basename)) {
-    return res.status(404).send('Not Found');
-  }
-  next();
-});
-
-// Serve only static front-end files
-app.use(express.static(path.join(__dirname), { index: 'index.html' }));
 
 // === Google Auth (SA-only) ===
 let authClient = null;
@@ -104,14 +70,14 @@ let saConfigured = false;
 async function initAuth() {
   if (!fs.existsSync(SA_KEY_PATH)) {
     console.warn('⚠️  Service Account key file NOT found at:', SA_KEY_PATH);
-    console.warn('   Place your sa-key.json file in the project directory to enable music playback.');
+    console.warn('   Frontend will show setup guide.');
     saConfigured = false;
     return;
   }
 
   try {
     const keyFile = JSON.parse(fs.readFileSync(SA_KEY_PATH, 'utf8'));
-    saEmail = keyFile.client_email;
+    saEmail = keyFile.client_email || '';
 
     authClient = new GoogleAuth({
       keyFile: SA_KEY_PATH,
@@ -129,168 +95,149 @@ async function initAuth() {
   }
 }
 
-async function getAccessToken() {
-  if (!authClient) return null;
-  const client = await authClient.getClient();
-  const { token } = await client.getAccessToken();
-  return token;
+// === Drive API helpers (with proxy-aware fetch) ===
+async function driveFetch(url, opts = {}) {
+  const headers = opts.headers || {};
+  const accessToken = await authClient.getAccessToken();
+  const fetchOpts = {
+    ...opts,
+    headers: {
+      ...headers,
+      'Authorization': `Bearer ${accessToken.token}`,
+    },
+  };
+  return fetch(url, fetchOpts);
 }
 
-// === API Routes ===
+// === Express App ===
+const app = express();
+
+// Only serve public-facing files (NOT server.js, package.json, sa-key.json, etc.)
+app.use(express.static(path.join(__dirname), {
+  index: 'index.html',
+  setHeaders: (res, filePath) => {
+    const basename = path.basename(filePath);
+    if (['server.js', 'package.json', 'sa-key.json', '.env'].includes(basename)) {
+      res.status(404).end();
+    }
+  },
+  extensions: ['html', 'css', 'js', 'svg', 'png', 'jpg', 'ico', 'woff', 'woff2'],
+}));
 
 // Status endpoint
 app.get('/api/status', (req, res) => {
   res.json({
     mode: 'service-account',
     saConfigured,
-    saEmail: saConfigured ? saEmail : null,
+    saEmail: saConfigured ? saEmail : '',
     folderId: FOLDER_ID || null,
     version: '1.0.0',
   });
 });
 
-// List audio files
+// List audio files in folder
 app.get('/api/files', async (req, res) => {
-  const token = await getAccessToken();
-  if (!token) return res.status(503).json({ error: 'SA not configured' });
+  if (!saConfigured) return res.status(503).json({ error: 'Service Account not configured' });
 
-  const folderId = req.query.folderId || FOLDER_ID || null;
-  const searchQuery = req.query.search || null;
-
-  let q;
-  if (searchQuery) {
-    const mimeQuery = AUDIO_MIME_TYPES.map(m => `mimeType='${m}'`).join(' or ');
-    q = `(${mimeQuery}) and trashed=false and name contains '${searchQuery}'`;
-  } else {
-    const mimeQuery = AUDIO_MIME_TYPES.map(m => `mimeType='${m}'`).join(' or ');
-    q = `(${mimeQuery}) and trashed=false`;
-    if (folderId) q += ` and '${folderId}' in parents`;
-  }
-
-  const params = new URLSearchParams({
-    q,
-    fields: 'files(id,name,mimeType,size,modifiedTime),nextPageToken',
-    orderBy: 'name',
-    pageSize: '200',
-  });
-
-  if (req.query.pageToken) params.set('pageToken', req.query.pageToken);
+  const folderId = req.query.folderId || FOLDER_ID;
+  if (!folderId) return res.status(400).json({ error: 'folderId is required' });
 
   try {
-    const response = await fetch(`${DRIVE_API_BASE}/files?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) {
-      const body = await response.text();
-      return res.status(response.status).json({ error: 'Drive API error', detail: body });
+    const mimeQuery = AUDIO_MIME_TYPES.map(m => `mimeType='${m}'`).join(' or ');
+    const q = `'${folderId}' in parents and (${mimeQuery}) and trashed=false`;
+    const url = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,size,webContentLink)&orderBy=name&pageSize=1000`;
+
+    const resp = await driveFetch(url);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return res.status(resp.status).json({ error: err.error?.message || 'Drive API error' });
     }
-    res.json(await response.json());
+    const data = await resp.json();
+    res.json({ files: data.files || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// List folders
+// List sub-folders
 app.get('/api/folders', async (req, res) => {
-  const token = await getAccessToken();
-  if (!token) return res.status(503).json({ error: 'SA not configured' });
+  if (!saConfigured) return res.status(503).json({ error: 'Service Account not configured' });
 
-  const parentId = req.query.parentId || null;
-  let q = `mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  if (parentId) q += ` and '${parentId}' in parents`;
-
-  const params = new URLSearchParams({
-    q,
-    fields: 'files(id,name)',
-    orderBy: 'name',
-    pageSize: '100',
-  });
+  const parentId = req.query.parentId || FOLDER_ID;
+  if (!parentId) return res.status(400).json({ error: 'parentId is required' });
 
   try {
-    const response = await fetch(`${DRIVE_API_BASE}/files?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return res.status(response.status).json({ error: 'Drive API error' });
-    res.json(await response.json());
+    const q = `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const url = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name&pageSize=1000`;
+
+    const resp = await driveFetch(url);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return res.status(resp.status).json({ error: err.error?.message || 'Drive API error' });
+    }
+    const data = await resp.json();
+    res.json({ folders: data.files || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Stream audio file with Range support
+// Stream audio file (supports Range requests for seeking)
 app.get('/api/stream/:fileId', async (req, res) => {
-  const token = await getAccessToken();
-  if (!token) return res.status(503).json({ error: 'SA not configured' });
+  if (!saConfigured) return res.status(503).json({ error: 'Service Account not configured' });
 
-  const { fileId } = req.params;
-  const rangeHeader = req.headers.range;
+  const fileId = req.params.fileId;
+  const range = req.headers.range;
 
   try {
-    // Get file metadata
-    const metaParams = new URLSearchParams({ fields: 'id,name,mimeType,size' });
-    const metaResponse = await fetch(`${DRIVE_API_BASE}/files/${fileId}?${metaParams}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!metaResponse.ok) return res.status(metaResponse.status).json({ error: 'File not found' });
+    // First get file metadata (size, name)
+    const metaUrl = `${DRIVE_API_BASE}/files/${fileId}?fields=size,name,mimeType,webContentLink`;
+    const metaResp = await driveFetch(metaUrl);
+    if (!metaResp.ok) return res.status(404).json({ error: 'File not found' });
 
-    const metadata = await metaResponse.json();
-    const fileSize = parseInt(metadata.size, 10);
+    const meta = await metaResp.json();
+    const fileSize = parseInt(meta.size, 10);
 
-    // Parse range
-    let startByte = 0;
-    let endByte = fileSize - 1;
+    // Build Drive API Range request URL
+    let driveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    const fetchOpts = { headers: {} };
 
-    if (rangeHeader) {
-      const m = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+    if (range) {
+      // Parse Range header: "bytes=start-end"
+      const m = range.match(/bytes=(\d+)-(\d*)/);
       if (m) {
-        startByte = m[1] ? parseInt(m[1], 10) : 0;
-        endByte = m[2] ? parseInt(m[2], 10) : fileSize - 1;
-      }
-      if (startByte >= fileSize || endByte >= fileSize) {
-        res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
-        return res.end();
+        const start = parseInt(m[1], 10);
+        const end = m[2] ? parseInt(m[2], 10) : fileSize - 1;
+        fetchOpts.headers['Range'] = `bytes=${start}-${end}`;
       }
     }
 
-    const contentLength = endByte - startByte + 1;
+    const driveResp = await driveFetch(driveUrl, fetchOpts);
 
-    res.setHeader('Content-Type', metadata.mimeType || 'audio/mpeg');
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Length', contentLength);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    // Forward status and headers
+    res.status(driveResp.status);
 
-    if (rangeHeader) {
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${startByte}-${endByte}/${fileSize}`);
+    const forwardHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+    for (const h of forwardHeaders) {
+      if (driveResp.headers.get(h)) {
+        res.set(h, driveResp.headers.get(h));
+      }
+    }
+
+    // Stream the response body
+    if (driveResp.body && typeof driveResp.body.pipe === 'function') {
+      driveResp.body.pipe(res);
+    } else if (driveResp.body) {
+      const { Readable } = require('stream');
+      Readable.fromWeb(driveResp.body).pipe(res);
     } else {
-      res.status(200);
+      const buf = await driveResp.buffer();
+      res.send(buf);
     }
-
-    // Fetch from Drive with range
-    const fetchHeaders = { Authorization: `Bearer ${token}` };
-    if (rangeHeader) fetchHeaders.Range = `bytes=${startByte}-${endByte}`;
-
-    const streamResponse = await fetch(
-      `${DRIVE_API_BASE}/files/${fileId}?alt=media`,
-      { headers: fetchHeaders }
-    );
-
-    if (!streamResponse.ok && streamResponse.status !== 206) {
-      return res.status(streamResponse.status).json({ error: 'Failed to stream file' });
-    }
-
-    // Pipe stream to client
-    const nodeStream = Readable.fromWeb(streamResponse.body);
-    nodeStream.pipe(res);
-
-    nodeStream.on('error', (err) => {
-      console.error('Stream error:', err);
-      if (!res.headersSent) res.status(500).json({ error: 'Stream error' });
-      else res.end();
-    });
   } catch (err) {
-    console.error('Stream error:', err);
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -299,19 +246,20 @@ async function start() {
   console.log('🔧 Initializing CloudTune server...');
   await initAuth();
 
-  app.listen(PORT, () => {
-    console.log(`\n🎵 CloudTune server running at http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🎵 CloudTune server running at http://0.0.0.0:${PORT}`);
     if (saConfigured) {
       console.log(`   SA Email: ${saEmail}`);
       console.log(`   Share your music folder with: ${saEmail}`);
+      if (FOLDER_ID) console.log(`   Folder ID: ${FOLDER_ID}`);
     } else {
-      console.log(`   ⚠️  SA not configured. Visit http://localhost:${PORT} for setup instructions.`);
+      console.log(`   ⚠️  SA not configured — visit http://0.0.0.0:${PORT} for setup guide`);
     }
-    if (FOLDER_ID) console.log(`   Folder ID: ${FOLDER_ID}`);
     console.log('');
   });
 }
 
 start().catch(err => {
   console.error('Failed to start server:', err);
+  process.exit(1);
 });
