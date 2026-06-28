@@ -108,7 +108,7 @@ sudo chmod 600 /opt/cloudtune/sa-key.json
 ```bash
 sudo tee /opt/cloudtune/.env << 'EOF'
 FOLDER_ID=你的文件夹ID
-PORT=3000
+PORT=3296
 EOF
 
 sudo chmod 600 /opt/cloudtune/.env
@@ -156,7 +156,7 @@ sudo journalctl -u cloudtune -f
 
 ```
 ✅ Service Account authenticated as: cloudtune-player@your-project.iam.gserviceaccount.com
-🎵 CloudTune server running at http://localhost:3000
+🎵 CloudTune server running at http://localhost:3296
    SA Email: cloudtune-player@...
    Share your music folder with: cloudtune-player@...
 ```
@@ -181,7 +181,7 @@ server {
     ssl_certificate_key /etc/ssl/private/your-key.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3296;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -191,7 +191,7 @@ server {
     }
 
     location /api/stream/ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3296;
         proxy_set_header Host $host;
         proxy_set_header Range $http_range;
         proxy_buffering off;
@@ -229,7 +229,7 @@ sudo rm -rf /opt/cloudtune
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PORT` | `3000` | 服务器监听端口 |
+| `PORT` | `3296` | 服务器监听端口 |
 | `FOLDER_ID` | 空 | Google Drive 音乐文件夹 ID |
 | `SA_KEY_PATH` | `./sa-key.json` | Service Account 密钥文件路径 |
 
@@ -245,7 +245,7 @@ sudo journalctl -u cloudtune --no-pager -n 50
 ### 端口冲突
 
 ```bash
-sudo lsof -i :3000
+sudo lsof -i :3296
 echo "PORT=8080" | sudo tee -a /opt/cloudtune/.env
 sudo systemctl restart cloudtune
 ```

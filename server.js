@@ -10,7 +10,7 @@
  *   3. Run: node server.js
  *
  * Environment variables:
- *   PORT         - Server port (default: 3000)
+ *   PORT         - Server port (default: 3296)
  *   FOLDER_ID    - Google Drive folder ID
  *   SA_KEY_PATH  - Path to SA JSON key file (default: ./sa-key.json)
  */
@@ -22,7 +22,7 @@ const { Readable } = require('stream');
 const fs = require('fs');
 
 // === Configuration ===
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '3296', 10);
 const FOLDER_ID = process.env.FOLDER_ID || '';
 const SA_KEY_PATH = process.env.SA_KEY_PATH || path.join(__dirname, 'sa-key.json');
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
