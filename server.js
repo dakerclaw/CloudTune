@@ -21,7 +21,18 @@ const path = require('path');
 const { GoogleAuth } = require('google-auth-library');
 const { Readable } = require('stream');
 const fs = require('fs');
-const { ProxyAgent, setGlobalDispatcher } = require('undici');
+// undici is built into Node.js v18.15+ as 'node:undici'
+// Fallback to npm package if needed
+let ProxyAgent, setGlobalDispatcher;
+try {
+  ({ ProxyAgent, setGlobalDispatcher } = require('node:undici'));
+} catch (e) {
+  try {
+    ({ ProxyAgent, setGlobalDispatcher } = require('undici'));
+  } catch (e2) {
+    // Proxy support unavailable
+  }
+}
 
 // === Load .env file (for direct `node server.js` without systemd) ===
 const envPath = path.join(__dirname, '.env');
@@ -50,8 +61,9 @@ const AUDIO_MIME_TYPES = [
 ];
 
 // === Proxy Support ===
-const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || '';
-if (HTTPS_PROXY) {
+const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.https_proxy ||
+                   process.env.HTTP_PROXY || process.env.http_proxy || '';
+if (HTTPS_PROXY && typeof ProxyAgent === 'function') {
   try {
     const agent = new ProxyAgent(HTTPS_PROXY);
     setGlobalDispatcher(agent);
@@ -59,6 +71,8 @@ if (HTTPS_PROXY) {
   } catch (err) {
     console.warn('⚠️  Invalid proxy URL:', HTTPS_PROXY, err.message);
   }
+} else if (HTTPS_PROXY) {
+  console.warn('⚠️  Proxy configured but undici not available. Install: npm install undici');
 }
 
 // Proxied fetch wrapper for Google API calls
