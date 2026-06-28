@@ -16,7 +16,6 @@
     saConnectBtn: $('saConnectBtn'),
     loginError: $('loginError'),
     searchInput: $('searchInput'),
-    folderBtn: $('folderBtn'),
     headerSettingsBtn: $('headerSettingsBtn'),
     logoutBtn: $('logoutBtn'),
     tabBtns: document.querySelectorAll('.tab-btn'),
@@ -56,13 +55,10 @@
     pbPrevBtn: $('pbPrevBtn'),
     pbNextBtn: $('pbNextBtn'),
     settingsModal: $('settingsModal'),
+    saEmailDisplay2: $('saEmailDisplay2'),
     settingsFolderId: $('settingsFolderId'),
     saveSettingsBtn: $('saveSettingsBtn'),
     cancelSettingsBtn: $('cancelSettingsBtn'),
-    folderModal: $('folderModal'),
-    folderList: $('folderList'),
-    allFilesBtn: $('allFilesBtn'),
-    closeFolderBtn: $('closeFolderBtn'),
     toastContainer: $('toastContainer'),
   };
 
@@ -130,7 +126,6 @@
     }
 
     dom.searchInput.addEventListener('input', onSearchInput);
-    dom.folderBtn.addEventListener('click', onFolderClick);
     if (dom.headerSettingsBtn) {
       dom.headerSettingsBtn.addEventListener('click', onSettingsClick);
     }
@@ -160,21 +155,9 @@
     dom.saveSettingsBtn.addEventListener('click', onSaveSettings);
     dom.cancelSettingsBtn.addEventListener('click', closeSettingsModal);
 
-    dom.allFilesBtn.addEventListener('click', () => {
-      Config.set('folderId', '');
-      loadFiles();
-      closeFolderModal();
-    });
-    dom.closeFolderBtn.addEventListener('click', closeFolderModal);
-
     dom.settingsModal.addEventListener('click', (e) => {
       if (e.target === dom.settingsModal) closeSettingsModal();
     });
-    dom.folderModal.addEventListener('click', (e) => {
-      if (e.target === dom.folderModal) closeFolderModal();
-    });
-
-    document.addEventListener('keydown', onKeydown);
   }
 
   function onSAConnect() {
@@ -282,6 +265,22 @@
 
     updateActiveSong();
     renderBreadcrumb();
+  }
+
+  function renderItemsFromList(items) {
+    dom.songList.innerHTML = '';
+    dom.loadingState.style.display = 'none';
+    dom.emptyState.style.display = 'none';
+
+    items.forEach((item, index) => {
+      if (item.mimeType === 'application/vnd.google-apps.folder') {
+        dom.songList.appendChild(createFolderItem(item, index));
+      } else {
+        dom.songList.appendChild(createSongItem(item, index));
+      }
+    });
+
+    updateActiveSong();
   }
 
   function createFolderItem(folder, index) {
@@ -402,17 +401,22 @@
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       if (!query) {
-        renderSongList(allFiles);
+        renderItems();
         return;
       }
       const filtered = allFiles.filter(f =>
         Drive.formatFileName(f.name).toLowerCase().includes(query)
       );
       if (filtered.length > 0) {
-        renderSongList(filtered);
+        // Show filtered files (keep folders visible)
+        const combined = [...allFolders, ...filtered];
+        renderItemsFromList(combined);
       } else {
-        Drive.searchFiles(query).then(files => renderSongList(files)).catch(() => {
-          renderSongList(filtered);
+        Drive.searchFiles(query).then(files => {
+          allFiles = files;
+          renderItems();
+        }).catch(() => {
+          renderItemsFromList([...allFolders, ...filtered]);
         });
       }
     }, 300);
@@ -499,6 +503,11 @@
 
   function onSettingsClick() {
     dom.settingsFolderId.value = Config.get('folderId') || '';
+    // Populate SA email in settings modal
+    const status = Drive.getBackendStatus();
+    if (dom.saEmailDisplay2 && status.saEmail) {
+      dom.saEmailDisplay2.textContent = status.saEmail;
+    }
     dom.settingsModal.classList.add('active');
   }
 
