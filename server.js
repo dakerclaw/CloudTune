@@ -94,6 +94,27 @@ async function driveFetch(url, opts = {}) {
 // === Express App ===
 const app = express();
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    console.log(`${new Date().toISOString()} ${req.method} ${req.url} ${res.statusCode} ${ms}ms`);
+  });
+  next();
+});
+
+// CORS middleware (allow all origins for now)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Only serve public-facing files (NOT server.js, package.json, sa-key.json, etc.)
 app.use(express.static(path.join(__dirname), {
   index: 'index.html',
@@ -126,12 +147,18 @@ app.get('/api/files', async (req, res) => {
     const q = `'${folderId}' in parents and (${mimeQuery}) and trashed=false`;
     const url = `${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,size,webContentLink)&orderBy=name&pageSize=1000`;
 
+    console.log(`[API] Fetching files from Drive API: folderId=${folderId}`);
     const resp = await driveFetch(url);
+    
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return res.status(resp.status).json({ error: err.error?.message || 'Drive API error' });
+      const errText = await resp.text().catch(() => 'Unable to read error');
+      console.error(`[API] Drive API error: ${resp.status} ${resp.statusText}`);
+      console.error(`[API] Error response: ${errText}`);
+      return res.status(resp.status).json({ error: `Drive API error: ${resp.status} ${resp.statusText}` });
     }
+    
     const data = await resp.json();
+    console.log(`[API] Found ${data.files?.length || 0} files`);
     res.json({ files: data.files || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
