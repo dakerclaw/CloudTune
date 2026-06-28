@@ -293,8 +293,8 @@ main() {
   # ── 步骤 5：安装依赖 ────────────────────────────────
   step "步骤 5/8 — 安装 npm 依赖"
   cd "$INSTALL_DIR" || { error "无法进入目录 $INSTALL_DIR"; exit 1; }
-  if npm install --registry=https://registry.npmmirror.com 2>/dev/null; then
-    success "依赖安装完成（淘宝镜像）"
+  if npm install --registry=https://registry.npmjs.org; then
+    success "依赖安装完成（官方源）"
   elif npm install; then
     success "依赖安装完成"
   else
