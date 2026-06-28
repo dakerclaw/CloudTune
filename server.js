@@ -21,6 +21,20 @@ const { GoogleAuth } = require('google-auth-library');
 const { Readable } = require('stream');
 const fs = require('fs');
 
+// === Load .env file (for direct `node server.js` without systemd) ===
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
 // === Configuration ===
 const PORT = parseInt(process.env.PORT || '3296', 10);
 const FOLDER_ID = process.env.FOLDER_ID || '';
@@ -35,7 +49,19 @@ const AUDIO_MIME_TYPES = [
 
 // === Express App ===
 const app = express();
-app.use(express.static(path.join(__dirname)));
+
+// Block access to sensitive files
+const SENSITIVE_FILES = ['server.js', 'package.json', 'sa-key.json', '.env', 'sa-key.json.README'];
+app.use((req, res, next) => {
+  const basename = path.basename(req.path);
+  if (SENSITIVE_FILES.includes(basename)) {
+    return res.status(404).send('Not Found');
+  }
+  next();
+});
+
+// Serve only static front-end files
+app.use(express.static(path.join(__dirname), { index: 'index.html' }));
 
 // === Google Auth (SA-only) ===
 let authClient = null;
