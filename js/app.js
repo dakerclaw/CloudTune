@@ -224,7 +224,7 @@
 
     try {
       allFiles = await Drive.listAudioFiles(folderId);
-      renderSongList(allFiles);
+      // renderSongList is called by onFilesLoaded event listener
     } catch (error) {
       dom.loadingState.style.display = 'none';
       dom.emptyState.style.display = 'flex';
@@ -235,11 +235,7 @@
   function onFilesLoaded(e) {
     dom.loadingState.style.display = 'none';
     const files = e.detail.files;
-    if (files.length === 0) {
-      dom.emptyState.style.display = 'flex';
-    } else {
-      renderSongList(files);
-    }
+    renderSongList(files);
   }
 
   function onDriveError(e) {
