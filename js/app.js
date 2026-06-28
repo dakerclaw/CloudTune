@@ -9,6 +9,9 @@
   const $ = id => document.getElementById(id);
 
   const dom = {
+    setupScreen: $('setupScreen'),
+    setupServerPath: $('setupServerPath'),
+    setupCheckBtn: $('setupCheckBtn'),
     loginScreen: $('loginScreen'),
     appScreen: $('appScreen'),
     saEmailDisplay: $('saEmailDisplay'),
@@ -84,16 +87,39 @@
     bindEvents();
 
     const saAvailable = await Drive.detectMode();
-    if (saAvailable) {
-      setupSAMode();
-    } else {
+    if (!saAvailable) {
       showLoginError('无法连接后端服务器，请确保 server.js 已启动。');
+      return;
     }
+
+    const status = Drive.getBackendStatus();
+    if (!status.saConfigured) {
+      showSetupScreen();
+    } else {
+      setupSAMode();
+    }
+  }
+
+  // === Setup Screen ===
+
+  function showSetupScreen() {
+    // Show server path in setup instructions
+    if (dom.setupServerPath) {
+      dom.setupServerPath.textContent = window.location.origin;
+    }
+    dom.setupScreen.classList.add('active');
+    dom.loginScreen.classList.remove('active');
+    dom.appScreen.classList.remove('active');
+  }
+
+  function hideSetupScreen() {
+    dom.setupScreen.classList.remove('active');
   }
 
   // === SA Mode ===
 
   function setupSAMode() {
+    hideSetupScreen();
     const status = Drive.getBackendStatus();
     if (dom.saEmailDisplay && status.saEmail) {
       dom.saEmailDisplay.textContent = status.saEmail;
@@ -114,6 +140,12 @@
     window.addEventListener('files-loaded', onFilesLoaded);
     window.addEventListener('drive-error', onDriveError);
 
+    // Setup screen
+    if (dom.setupCheckBtn) {
+      dom.setupCheckBtn.addEventListener('click', onSetupCheck);
+    }
+
+    // Login screen
     if (dom.saFolderInput) {
       dom.saFolderInput.addEventListener('input', () => {
         if (dom.saConnectBtn) {
@@ -169,6 +201,23 @@
     document.addEventListener('keydown', onKeydown);
   }
 
+  function onSetupCheck() {
+    // Re-check backend status
+    Drive.detectMode().then(saAvailable => {
+      if (!saAvailable) {
+        showToast('仍无法连接后端，请确保 server.js 正在运行。', 'error');
+        return;
+      }
+      const status = Drive.getBackendStatus();
+      if (status.saConfigured) {
+        showToast('配置成功！', 'success');
+        setupSAMode();
+      } else {
+        showToast('仍未检测到 sa-key.json，请确认文件已上传到正确位置。', 'error');
+      }
+    });
+  }
+
   function onSAConnect() {
     const folderId = dom.saFolderInput?.value.trim();
     if (!folderId) {
@@ -183,6 +232,7 @@
   // === Screens ===
 
   function enterApp() {
+    hideSetupScreen();
     dom.loginScreen.classList.remove('active');
     dom.appScreen.classList.add('active');
     loadFiles();

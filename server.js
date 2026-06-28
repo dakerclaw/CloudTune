@@ -66,12 +66,14 @@ app.use(express.static(path.join(__dirname), { index: 'index.html' }));
 // === Google Auth (SA-only) ===
 let authClient = null;
 let saEmail = '';
+let saConfigured = false;
 
 async function initAuth() {
   if (!fs.existsSync(SA_KEY_PATH)) {
-    console.error('❌ Service Account key file NOT found at:', SA_KEY_PATH);
-    console.error('   Please place your sa-key.json file in the project directory.');
-    process.exit(1);
+    console.warn('⚠️  Service Account key file NOT found at:', SA_KEY_PATH);
+    console.warn('   Place your sa-key.json file in the project directory to enable music playback.');
+    saConfigured = false;
+    return;
   }
 
   try {
@@ -86,10 +88,11 @@ async function initAuth() {
     const client = await authClient.getClient();
     await client.getAccessToken();
 
+    saConfigured = true;
     console.log('✅ Service Account authenticated as:', saEmail);
   } catch (err) {
     console.error('❌ Service Account auth failed:', err.message);
-    process.exit(1);
+    saConfigured = false;
   }
 }
 
@@ -106,7 +109,8 @@ async function getAccessToken() {
 app.get('/api/status', (req, res) => {
   res.json({
     mode: 'service-account',
-    saEmail,
+    saConfigured,
+    saEmail: saConfigured ? saEmail : null,
     folderId: FOLDER_ID || null,
     version: '1.0.0',
   });
@@ -264,8 +268,12 @@ async function start() {
 
   app.listen(PORT, () => {
     console.log(`\n🎵 CloudTune server running at http://localhost:${PORT}`);
-    console.log(`   SA Email: ${saEmail}`);
-    console.log(`   Share your music folder with: ${saEmail}`);
+    if (saConfigured) {
+      console.log(`   SA Email: ${saEmail}`);
+      console.log(`   Share your music folder with: ${saEmail}`);
+    } else {
+      console.log(`   ⚠️  SA not configured. Visit http://localhost:${PORT} for setup instructions.`);
+    }
     if (FOLDER_ID) console.log(`   Folder ID: ${FOLDER_ID}`);
     console.log('');
   });
@@ -273,5 +281,4 @@ async function start() {
 
 start().catch(err => {
   console.error('Failed to start server:', err);
-  process.exit(1);
 });

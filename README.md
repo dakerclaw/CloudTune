@@ -154,7 +154,7 @@ cd /opt/cloudtune
 node server.js
 ```
 
-看到以下输出说明配置成功：
+**配置成功后**看到以下输出：
 
 ```
 🔧 Initializing CloudTune server...
@@ -163,6 +163,17 @@ node server.js
 🎵 CloudTune server running at http://localhost:3296
    SA Email: cloudtune-player@...
    Share your music folder with: cloudtune-player@...
+```
+
+**如果 sa-key.json 未配置**，服务也会正常启动，但浏览器会显示配置引导页面：
+
+```
+🔧 Initializing CloudTune server...
+⚠️  Service Account key file NOT found at: /opt/cloudtune/sa-key.json
+   Place your sa-key.json file in the project directory to enable music playback.
+
+🎵 CloudTune server running at http://localhost:3296
+   ⚠️  SA not configured. Visit http://localhost:3296 for setup instructions.
 ```
 
 按 `Ctrl+C` 退出，继续配置 systemd 服务。

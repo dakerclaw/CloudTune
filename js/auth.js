@@ -5,6 +5,7 @@
 
 const Auth = (() => {
   let saAvailable = false;
+  let saConfigured = false;
   let saEmail = '';
 
   async function detectMode() {
@@ -14,6 +15,7 @@ const Auth = (() => {
         const data = await res.json();
         if (data.mode === 'service-account') {
           saAvailable = true;
+          saConfigured = !!data.saConfigured;
           saEmail = data.saEmail || '';
           return true;
         }
@@ -25,7 +27,8 @@ const Auth = (() => {
   }
 
   function isServiceAccount() { return saAvailable; }
+  function isSAConfigured() { return saConfigured; }
   function getSAEmail() { return saEmail; }
 
-  return { detectMode, isServiceAccount, getSAEmail };
+  return { detectMode, isServiceAccount, isSAConfigured, getSAEmail };
 })();

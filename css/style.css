@@ -344,6 +344,91 @@ img { display: block; max-width: 100%; }
   text-align: center;
 }
 
+/* === Setup Screen === */
+#setupScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px 24px 32px;
+  text-align: center;
+  overflow-y: auto;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.setup-steps {
+  width: 100%;
+  margin: 28px 0;
+  text-align: left;
+}
+
+.setup-step {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  align-items: flex-start;
+}
+
+.setup-step-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.setup-step-content {
+  flex: 1;
+}
+
+.setup-step-content strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.setup-step-content p {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.setup-step-content a {
+  color: var(--accent-light);
+  text-decoration: none;
+}
+
+.setup-step-content a:hover {
+  text-decoration: underline;
+}
+
+.setup-step-content code {
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--accent-light);
+}
+
+#setupServerPath {
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--accent-light);
+  font-family: monospace;
+}
+
 /* === Main App === */
 #appScreen {
   flex-direction: column;
