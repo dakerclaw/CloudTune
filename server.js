@@ -13,12 +13,6 @@
  *   PORT         - Server port (default: 3296)
  *   FOLDER_ID    - Google Drive folder ID
  *   SA_KEY_PATH  - Path to SA JSON key file (default: ./sa-key.json)
- *   HTTPS_PROXY  - Proxy URL for outbound HTTPS requests (e.g. http://ip:port)
- *                  Also supports HTTP_PROXY / http_proxy / https_proxy
- *
- * Proxy note:
- *   google-auth-library v9+ reads HTTP_PROXY/HTTPS_PROXY automatically.
- *   For Node.js fetch(), set GLOBAL_AGENT_HTTP_PROXY or use Node v22.14+.
  */
 
 const express = require('express');
@@ -52,15 +46,6 @@ const AUDIO_MIME_TYPES = [
   'audio/flac','audio/aac','audio/mp4','audio/x-m4a',
   'audio/webm','audio/amr','audio/x-ms-wma','application/ogg',
 ];
-
-// === Proxy Support (for google-auth-library) ===
-// google-auth-library v9+ auto-reads HTTP_PROXY / HTTPS_PROXY env vars.
-// Nothing extra needed here — just make sure the env vars are set in .env
-const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.https_proxy ||
-                   process.env.HTTP_PROXY || process.env.http_proxy || '';
-if (HTTPS_PROXY) {
-  console.log(`   Proxy: ${HTTPS_PROXY}`);
-}
 
 // === Google Auth (SA-only) ===
 let authClient = null;

@@ -418,39 +418,13 @@ ${paste_line}"
     fi
   fi
 
-  # 6.4 网络代理（可选）
+  # 6.4 写入 .env 文件
   echo ""
-  info "6.4 配置网络代理（可选，用于访问 Google API）"
-  local proxy_url=""
-  ask "代理地址 (留空跳过，格式如 http://192.168.1.1:7890)" "" proxy_url
-  if [[ -n "$proxy_url" ]]; then
-    # 验证代理 URL 格式
-    if [[ "$proxy_url" =~ ^https?://[^[:space:]]+:[0-9]+$ ]]; then
-      success "将使用代理: $proxy_url"
-    else
-      # 自动补全 http:// 前缀
-      if [[ "$proxy_url" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]] || \
-         [[ "$proxy_url" =~ ^localhost:[0-9]+$ ]] || \
-         [[ "$proxy_url" =~ ^127\.0\.0\.1:[0-9]+$ ]]; then
-        proxy_url="http://${proxy_url}"
-        success "自动补全代理地址: $proxy_url"
-      else
-        warn "代理格式不正确，跳过"
-        proxy_url=""
-      fi
-    fi
-  fi
-
-  # 6.5 写入 .env 文件
-  echo ""
-  info "6.5 写入环境变量配置"
+  info "6.4 写入环境变量配置"
   cat > "$INSTALL_DIR/.env" << EOF
 FOLDER_ID=${folder_id}
 PORT=${port}
 EOF
-  if [[ -n "$proxy_url" ]]; then
-    echo "HTTPS_PROXY=${proxy_url}" >> "$INSTALL_DIR/.env"
-  fi
   chmod 600 "$INSTALL_DIR/.env"
   success ".env 已写入: $INSTALL_DIR/.env"
 

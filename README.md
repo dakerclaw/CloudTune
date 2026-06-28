@@ -49,28 +49,13 @@ curl -fsSL https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh
 脚本会自动完成以下步骤（全部交互式）：
 1. 检测系统环境（包管理器、init 系统）
 2. 检查 / 安装 Node.js（支持 apt/yum/dnf/nvm）
-3. 可选配置 npm/git 代理（支持 HTTP/HTTPS 代理）
-4. 选择安装目录（默认 `~/cloudtune`）
-5. 克隆项目并安装依赖
-6. 交互式配置：
+3. 选择安装目录（默认 `~/cloudtune`）
+4. 克隆项目并安装依赖
+5. 交互式配置：
    - 端口号（默认 3296）
    - Google Drive 文件夹 ID（支持粘贴完整 URL，自动提取 ID）
    - SA 密钥（支持粘贴 JSON 内容或暂时跳过）
-7. 可选配置 systemd 开机自启 + 防火墙
-
-### 代理配置（可选）
-
-如果服务器需要通过代理访问外网，在安装过程中会选择是否配置代理：
-
-```
-是否配置代理？(y/n): y
-请输入 HTTP 代理地址 (例如: http://proxy.example.com:8080): http://192.168.137.123:12345
-```
-
-脚本会自动配置：
-- npm 代理（`npm config set proxy` / `npm config set https-proxy`）
-- git 代理（`git config --global http.proxy`）
-- 写入 `.env` 文件（`HTTPS_PROXY=...`），供 `google-auth-library` 自动读取
+6. 可选配置 systemd 开机自启 + 防火墙
 
 ---
 
@@ -200,20 +185,7 @@ EOF
 chmod 600 ~/cloudtune/.env
 ```
 
-如果使用代理访问 Google API，添加 `HTTPS_PROXY`：
-
-```bash
-cat > ~/cloudtune/.env << 'EOF'
-FOLDER_ID=你的文件夹ID
-PORT=3296
-HTTPS_PROXY=http://代理服务器地址:端口
-EOF
-```
-
-> **注意**：
-> - `server.js` 会自动读取项目根目录下的 `.env` 文件，无需额外安装 `dotenv`
-> - `HTTPS_PROXY` 会被 `google-auth-library` 自动读取，用于通过代理访问 Google API
-> - 代理地址格式：`http://代理服务器:端口` 或 `http://用户名:密码@代理服务器:端口`
+> **注意**：`server.js` 会自动读取项目根目录下的 `.env` 文件，无需额外安装 `dotenv`。
 
 ### 5. 测试启动
 
@@ -353,37 +325,10 @@ rm -rf ~/.nvm
 | `PORT` | `3296` | 服务器监听端口 |
 | `FOLDER_ID` | 空 | Google Drive 音乐文件夹 ID（支持从完整 URL 自动提取） |
 | `SA_KEY_PATH` | `./sa-key.json` | Service Account 密钥文件路径 |
-| `HTTPS_PROXY` | 空 | HTTPS 代理地址（用于通过代理访问 Google API） |
 
 > 环境变量可通过 `.env` 文件配置（server.js 自动加载），也可通过 systemd `EnvironmentFile` 或命令行 `PORT=3296 node server.js` 设置。
 
 ## 常见问题
-
-### 服务器需要通过代理访问 Google API
-
-如果服务器在防火墙后面，需要通过代理访问 Google API：
-
-**方式 A：通过 `.env` 文件配置（推荐）**
-
-```bash
-# 编辑 .env 文件
-nano ~/cloudtune/.env
-
-# 添加以下行
-HTTPS_PROXY=http://代理服务器地址:端口
-
-# 重启服务
-sudo systemctl restart cloudtune
-```
-
-**方式 B：通过环境变量临时设置**
-
-```bash
-# 设置环境变量并启动
-HTTPS_PROXY=http://代理服务器地址:端口 node server.js
-```
-
-> **注意**：`google-auth-library` 会自动读取 `HTTPS_PROXY` 环境变量，无需额外配置。
 
 ### npm install 失败
 
@@ -416,8 +361,7 @@ sudo journalctl -u cloudtune --no-pager -n 50
 **常见原因**：
 1. **密钥文件格式错误**：确保是有效的 JSON 文件
 2. **文件夹未共享给 SA**：确认已将文件夹共享给 `client_email` 中的邮箱
-3. **代理配置错误**：如果服务器需要代理，确保 `.env` 中配置了 `HTTPS_PROXY`
-4. **网络问题**：确保服务器可以访问 Google API（Drive API）
+3. **网络问题**：确保服务器可以访问 Google API（Drive API）
 
 ### 端口冲突
 
