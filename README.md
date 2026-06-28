@@ -49,12 +49,28 @@ curl -fsSL https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh
 脚本会自动完成以下步骤（全部交互式）：
 1. 检测系统环境（包管理器、init 系统）
 2. 检查 / 安装 Node.js（支持 apt/yum/dnf/nvm）
-3. 选择安装目录（默认 `~/cloudtune`）
-4. 克隆项目并安装依赖
-5. 交互式填写端口号、Google Drive 文件夹 ID
-6. 上传 SA 密钥（支持拖拽文件到终端）
-7. 启动测试并验证
-8. 可选配置 systemd 开机自启 + 防火墙
+3. 可选配置 npm/git 代理（支持 HTTP/HTTPS 代理）
+4. 选择安装目录（默认 `~/cloudtune`）
+5. 克隆项目并安装依赖
+6. 交互式配置：
+   - 端口号（默认 3296）
+   - Google Drive 文件夹 ID（支持粘贴完整 URL，自动提取 ID）
+   - SA 密钥（支持粘贴 JSON 内容或暂时跳过）
+7. 可选配置 systemd 开机自启 + 防火墙
+
+### 代理配置（可选）
+
+如果服务器需要通过代理访问外网，在安装过程中会选择是否配置代理：
+
+```
+是否配置代理？(y/n): y
+请输入 HTTP 代理地址 (例如: http://proxy.example.com:8080): http://192.168.137.123:12345
+```
+
+脚本会自动配置：
+- npm 代理（`npm config set proxy` / `npm config set https-proxy`）
+- git 代理（`git config --global http.proxy`）
+- 写入 `.env` 文件（`HTTPS_PROXY=...`），供 `google-auth-library` 自动读取
 
 ---
 
@@ -136,6 +152,10 @@ npm install
 
 #### 放置密钥文件
 
+有两种方式配置 SA 密钥：
+
+**方式 A：手动放置**
+
 ```bash
 # 将下载的 JSON 文件放到项目根目录，命名为 sa-key.json
 cp ~/Downloads/你的密钥文件.json ~/cloudtune/sa-key.json
@@ -144,15 +164,30 @@ cp ~/Downloads/你的密钥文件.json ~/cloudtune/sa-key.json
 chmod 600 ~/cloudtune/sa-key.json
 ```
 
+**方式 B：粘贴 JSON 内容**
+
+如果不方便传输文件，可以直接粘贴 JSON 内容：
+
+```bash
+# 编辑 sa-key.json，粘贴完整的 JSON 内容
+nano ~/cloudtune/sa-key.json
+
+# 设置安全权限
+chmod 600 ~/cloudtune/sa-key.json
+```
+
+> **提示**：可以使用 `cat ~/Downloads/你的密钥文件.json | pbcopy`（macOS）或 `cat ~/Downloads/你的密钥文件.json | xclip -selection clipboard`（Linux）复制内容，然后粘贴到远程服务器。
+
 #### 共享音乐文件夹
 
 1. 打开 `sa-key.json`，找到 `client_email` 的值
 2. 在 Google Drive 中，右键音乐文件夹 → **共享**
 3. 添加 SA 的 email，权限选择 **Viewer（查看者）**
-4. 复制文件夹 URL 中的 ID：
-   ```
-   https://drive.google.com/drive/folders/FOLDER_ID_HERE
-   ```
+4. 复制文件夹 ID 或完整 URL：
+   - **仅 ID**：`FOLDER_ID_HERE`（从 URL `https://drive.google.com/drive/folders/FOLDER_ID_HERE` 中提取）
+   - **完整 URL**：`https://drive.google.com/drive/folders/FOLDER_ID_HERE`（install.sh 会自动提取 ID）
+
+> **提示**：在 `install.sh` 交互式配置中，可以直接粘贴完整的 Google Drive 文件夹 URL，脚本会自动提取 FOLDER_ID。
 
 #### 配置环境变量
 
@@ -165,7 +200,20 @@ EOF
 chmod 600 ~/cloudtune/.env
 ```
 
-> **提示**：`server.js` 会自动读取项目根目录下的 `.env` 文件，无需额外安装 `dotenv`。
+如果使用代理访问 Google API，添加 `HTTPS_PROXY`：
+
+```bash
+cat > ~/cloudtune/.env << 'EOF'
+FOLDER_ID=你的文件夹ID
+PORT=3296
+HTTPS_PROXY=http://代理服务器地址:端口
+EOF
+```
+
+> **注意**：
+> - `server.js` 会自动读取项目根目录下的 `.env` 文件，无需额外安装 `dotenv`
+> - `HTTPS_PROXY` 会被 `google-auth-library` 自动读取，用于通过代理访问 Google API
+> - 代理地址格式：`http://代理服务器:端口` 或 `http://用户名:密码@代理服务器:端口`
 
 ### 5. 测试启动
 
@@ -195,6 +243,8 @@ node server.js
 🎵 CloudTune server running at http://localhost:3296
    ⚠️  SA not configured. Visit http://localhost:3296 for setup instructions.
 ```
+
+此时访问 `http://服务器IP:3296`，会看到友好的配置引导页面，提示如何配置 SA 密钥和 FOLDER_ID。
 
 ---
 
@@ -301,12 +351,39 @@ rm -rf ~/.nvm
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT` | `3296` | 服务器监听端口 |
-| `FOLDER_ID` | 空 | Google Drive 音乐文件夹 ID |
+| `FOLDER_ID` | 空 | Google Drive 音乐文件夹 ID（支持从完整 URL 自动提取） |
 | `SA_KEY_PATH` | `./sa-key.json` | Service Account 密钥文件路径 |
+| `HTTPS_PROXY` | 空 | HTTPS 代理地址（用于通过代理访问 Google API） |
 
 > 环境变量可通过 `.env` 文件配置（server.js 自动加载），也可通过 systemd `EnvironmentFile` 或命令行 `PORT=3296 node server.js` 设置。
 
 ## 常见问题
+
+### 服务器需要通过代理访问 Google API
+
+如果服务器在防火墙后面，需要通过代理访问 Google API：
+
+**方式 A：通过 `.env` 文件配置（推荐）**
+
+```bash
+# 编辑 .env 文件
+nano ~/cloudtune/.env
+
+# 添加以下行
+HTTPS_PROXY=http://代理服务器地址:端口
+
+# 重启服务
+sudo systemctl restart cloudtune
+```
+
+**方式 B：通过环境变量临时设置**
+
+```bash
+# 设置环境变量并启动
+HTTPS_PROXY=http://代理服务器地址:端口 node server.js
+```
+
+> **注意**：`google-auth-library` 会自动读取 `HTTPS_PROXY` 环境变量，无需额外配置。
 
 ### npm install 失败
 
@@ -323,6 +400,9 @@ npm install --registry=https://registry.npmmirror.com
 ### SA 密钥认证失败
 
 ```bash
+# 检查密钥文件是否存在
+ls -la ~/cloudtune/sa-key.json
+
 # 检查密钥文件格式
 cat ~/cloudtune/sa-key.json | python3 -m json.tool
 
@@ -332,6 +412,12 @@ cat ~/cloudtune/sa-key.json | grep client_email
 # 查看服务日志（如果配置了 systemd）
 sudo journalctl -u cloudtune --no-pager -n 50
 ```
+
+**常见原因**：
+1. **密钥文件格式错误**：确保是有效的 JSON 文件
+2. **文件夹未共享给 SA**：确认已将文件夹共享给 `client_email` 中的邮箱
+3. **代理配置错误**：如果服务器需要代理，确保 `.env` 中配置了 `HTTPS_PROXY`
+4. **网络问题**：确保服务器可以访问 Google API（Drive API）
 
 ### 端口冲突
 
