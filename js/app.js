@@ -69,6 +69,8 @@
   let currentTab = 'songs';
   let searchTimeout = null;
   let allFiles = [];
+  let allFolders = [];
+  let folderStack = [];  // 文件夹导航栈：[{id, name}]
 
   // === Init ===
 
@@ -217,14 +219,19 @@
   // === Files ===
 
   async function loadFiles() {
-    const folderId = Config.get('folderId') || null;
+    const folderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : (Config.get('folderId') || null);
     dom.loadingState.style.display = 'flex';
     dom.emptyState.style.display = 'none';
     dom.songList.innerHTML = '';
 
     try {
-      allFiles = await Drive.listAudioFiles(folderId);
-      // renderSongList is called by onFilesLoaded event listener
+      const [files, folders] = await Promise.all([
+        Drive.listAudioFiles(folderId),
+        Drive.listFolders(folderId)
+      ]);
+      allFiles = files;
+      allFolders = folders;
+      // renderItems is called by onFilesLoaded event listener
     } catch (error) {
       dom.loadingState.style.display = 'none';
       dom.emptyState.style.display = 'flex';
@@ -234,8 +241,8 @@
 
   function onFilesLoaded(e) {
     dom.loadingState.style.display = 'none';
-    const files = e.detail.files;
-    renderSongList(files);
+    // Use already cached allFiles and allFolders
+    renderItems();
   }
 
   function onDriveError(e) {
@@ -245,20 +252,56 @@
 
   // === Song List ===
 
-  function renderSongList(files) {
+  function renderItems() {
     dom.songList.innerHTML = '';
     dom.loadingState.style.display = 'none';
 
-    if (files.length === 0) {
+    const hasFolders = allFolders.length > 0;
+    const hasFiles = allFiles.length > 0;
+
+    if (!hasFolders && !hasFiles) {
       dom.emptyState.style.display = 'flex';
       return;
     }
 
     dom.emptyState.style.display = 'none';
-    files.forEach((file, index) => {
+
+    // Render folders first
+    allFolders.forEach((folder, index) => {
+      dom.songList.appendChild(createFolderItem(folder, index));
+    });
+
+    // Then render files
+    allFiles.forEach((file, index) => {
       dom.songList.appendChild(createSongItem(file, index));
     });
+
     updateActiveSong();
+    renderBreadcrumb();
+  }
+
+  function createFolderItem(folder, index) {
+    const div = document.createElement('div');
+    div.className = 'song-item folder-item';
+    div.dataset.folderId = folder.id;
+
+    div.innerHTML = `
+      <span class="song-index"></span>
+      <div class="song-art" style="background:#5a3ed8">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+      </div>
+      <div class="song-info">
+        <span class="song-name">${escapeHtml(folder.name)}</span>
+        <div class="song-meta">
+          <span>文件夹</span>
+        </div>
+      </div>
+    `;
+
+    div.addEventListener('click', () => {
+      navigateToFolder(folder.id, folder.name);
+    });
+    return div;
   }
 
   function createSongItem(file, index) {
@@ -289,6 +332,51 @@
       switchTab('playing');
     });
     return div;
+  }
+
+  function navigateToFolder(folderId, folderName) {
+    folderStack.push({ id: folderId, name: folderName });
+    loadFiles();
+  }
+
+  function navigateBack() {
+    if (folderStack.length > 0) {
+      folderStack.pop();
+      loadFiles();
+    }
+  }
+
+  function navigateToBreadcrumb(index) {
+    // index = -1 means root
+    if (index === -1) {
+      folderStack = [];
+    } else {
+      folderStack = folderStack.slice(0, index + 1);
+    }
+    loadFiles();
+  }
+
+  function renderBreadcrumb() {
+    let breadcrumb = dom.songList.querySelector('.breadcrumb');
+    if (!breadcrumb) {
+      breadcrumb = document.createElement('div');
+      breadcrumb.className = 'breadcrumb';
+      dom.songList.insertBefore(breadcrumb, dom.songList.firstChild);
+    }
+
+    let html = '<span class="breadcrumb-item" data-index="-1">全部</span>';
+    folderStack.forEach((folder, index) => {
+      html += `<span class="breadcrumb-sep">/</span>`;
+      html += `<span class="breadcrumb-item" data-index="${index}">${escapeHtml(folder.name)}</span>`;
+    });
+    breadcrumb.innerHTML = html;
+
+    breadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigateToBreadcrumb(parseInt(item.dataset.index));
+      });
+    });
   }
 
   function updateActiveSong() {

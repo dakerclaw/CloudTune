@@ -1325,3 +1325,39 @@ img { display: block; max-width: 100%; }
 
 .player-bar.no-track .pb-title { display: none; }
 .player-bar.no-track .pb-meta { display: none; }
+
+/* === Breadcrumb === */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.breadcrumb-item {
+  color: var(--accent-light);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.breadcrumb-item:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--text-tertiary);
+}
+
+/* === Folder Item === */
+.song-item.folder-item .song-art {
+  background: #5a3ed8 !important;
+}
+
+.song-item.folder-item .song-name {
+  color: var(--accent-light);
+}
