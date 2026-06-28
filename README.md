@@ -25,7 +25,7 @@
 ├── index.html          # 前端页面（SA 模式，无需 OAuth2）
 ├── server.js           # Express 后端（SA 认证 + Drive API 代理 + Range 流式传输）
 ├── package.json        # 后端依赖
-├── sa-key.json.README  # SA 密钥配置说明
+├── install.sh         # 交互式一键安装脚本
 ├── .env                # 环境变量（自建，不包含在仓库中）
 ├── css/
 │   └── style.css       # 深色主题 + 响应式
@@ -39,7 +39,26 @@
 
 ---
 
-## 安装
+## 一键安装（推荐）
+
+```bash
+# 下载并运行安装脚本
+curl -fsSL https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh | bash
+```
+
+脚本会自动完成以下步骤（全部交互式）：
+1. 检测系统环境（包管理器、init 系统）
+2. 检查 / 安装 Node.js（支持 apt/yum/dnf/nvm）
+3. 选择安装目录（默认 `~/cloudtune`）
+4. 克隆项目并安装依赖
+5. 交互式填写端口号、Google Drive 文件夹 ID
+6. 上传 SA 密钥（支持拖拽文件到终端）
+7. 启动测试并验证
+8. 可选配置 systemd 开机自启 + 防火墙
+
+---
+
+## 手动安装
 
 ### 1. 克隆项目
 
