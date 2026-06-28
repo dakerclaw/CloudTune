@@ -13,6 +13,7 @@
  *   PORT         - Server port (default: 3296)
  *   FOLDER_ID    - Google Drive folder ID
  *   SA_KEY_PATH  - Path to SA JSON key file (default: ./sa-key.json)
+ *   HTTPS_PROXY  - Proxy URL for outbound HTTPS requests (e.g. http://ip:port)
  */
 
 const express = require('express');
@@ -20,6 +21,7 @@ const path = require('path');
 const { GoogleAuth } = require('google-auth-library');
 const { Readable } = require('stream');
 const fs = require('fs');
+const { ProxyAgent, setGlobalDispatcher } = require('undici');
 
 // === Load .env file (for direct `node server.js` without systemd) ===
 const envPath = path.join(__dirname, '.env');
@@ -46,6 +48,23 @@ const AUDIO_MIME_TYPES = [
   'audio/flac','audio/aac','audio/mp4','audio/x-m4a',
   'audio/webm','audio/amr','audio/x-ms-wma','application/ogg',
 ];
+
+// === Proxy Support ===
+const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || '';
+if (HTTPS_PROXY) {
+  try {
+    const agent = new ProxyAgent(HTTPS_PROXY);
+    setGlobalDispatcher(agent);
+    console.log(`   Proxy: ${HTTPS_PROXY}`);
+  } catch (err) {
+    console.warn('⚠️  Invalid proxy URL:', HTTPS_PROXY, err.message);
+  }
+}
+
+// Proxied fetch wrapper for Google API calls
+async function apiFetch(url, opts = {}) {
+  return fetch(url, opts);
+}
 
 // === Express App ===
 const app = express();
