@@ -6,6 +6,21 @@
 
 set -uo pipefail
 
+# ─── 修复 curl | bash 时 stdin 被占用的问题 ─────────────
+# 检测 stdin 是否被管道占用，如果是则重定向到终端
+if [ ! -t 0 ]; then
+  # stdin 不是终端（被管道占用），尝试重定向到 tty
+  if [ -e /dev/tty ]; then
+    exec < /dev/tty
+  else
+    # /dev/tty 不可用，提示用户先下载再运行
+    printf "\033[0;31m❌ 请先下载脚本再运行，不要使用 curl | bash 方式：\033[0m\n"
+    printf "   wget https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh\n"
+    printf "   bash install.sh\n"
+    exit 1
+  fi
+fi
+
 # ─── 颜色 ─────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
