@@ -77,18 +77,37 @@ async function initAuth() {
   }
 }
 
-// === Drive API helpers (with proxy-aware fetch) ===
+// === Drive API helpers ===
 async function driveFetch(url, opts = {}) {
   const headers = opts.headers || {};
-  const accessToken = await authClient.getAccessToken();
+  
+  // Get access token (handle both string and object returns)
+  const tokenResult = await authClient.getAccessToken();
+  const accessToken = typeof tokenResult === 'string' ? tokenResult : tokenResult.token;
+  
+  if (!accessToken) {
+    throw new Error('Failed to get access token');
+  }
+  
+  console.log(`[Drive API] Fetching: ${url.substring(0, 100)}...`);
+  console.log(`[Drive API] Token prefix: ${accessToken.substring(0, 20)}...`);
+  
   const fetchOpts = {
     ...opts,
     headers: {
       ...headers,
-      'Authorization': `Bearer ${accessToken.token}`,
+      'Authorization': `Bearer ${accessToken}`,
     },
   };
-  return fetch(url, fetchOpts);
+  
+  const resp = await fetch(url, fetchOpts);
+  
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => 'Unable to read error');
+    console.error(`[Drive API] Error ${resp.status}: ${errText}`);
+  }
+  
+  return resp;
 }
 
 // === Express App ===
