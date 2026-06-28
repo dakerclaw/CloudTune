@@ -17,7 +17,6 @@
     loginError: $('loginError'),
     searchInput: $('searchInput'),
     headerSettingsBtn: $('headerSettingsBtn'),
-    logoutBtn: $('logoutBtn'),
     tabBtns: document.querySelectorAll('.tab-btn'),
     songsTab: $('songsTab'),
     playingTab: $('playingTab'),
@@ -128,9 +127,6 @@
     dom.searchInput.addEventListener('input', onSearchInput);
     if (dom.headerSettingsBtn) {
       dom.headerSettingsBtn.addEventListener('click', onSettingsClick);
-    }
-    if (dom.logoutBtn) {
-      dom.logoutBtn.addEventListener('click', onLogout);
     }
 
     dom.tabBtns.forEach(btn => {
@@ -514,7 +510,7 @@
   function onSaveSettings() {
     const folderId = dom.settingsFolderId.value.trim();
     Config.set('folderId', folderId);
-    if (dom.saFolderInput) dom.saFolderInput.value = folderId;
+    folderStack = [];  // 重置文件夹导航
     closeSettingsModal();
     showToast('设置已保存', 'success');
     loadFiles();
@@ -522,56 +518,6 @@
 
   function closeSettingsModal() {
     dom.settingsModal.classList.remove('active');
-  }
-
-  // === Folder Modal ===
-
-  async function onFolderClick() {
-    dom.folderModal.classList.add('active');
-    try {
-      const folders = await Drive.listFolders();
-      renderFolderList(folders);
-    } catch {
-      dom.folderList.innerHTML = '<p style="color:var(--text-tertiary);padding:16px;text-align:center">无法加载文件夹列表</p>';
-    }
-  }
-
-  function renderFolderList(folders) {
-    dom.folderList.innerHTML = '';
-    if (folders.length === 0) {
-      dom.folderList.innerHTML = '<p style="color:var(--text-tertiary);padding:16px;text-align:center">没有找到文件夹</p>';
-      return;
-    }
-    folders.forEach(folder => {
-      const item = document.createElement('div');
-      item.className = 'folder-item';
-      item.innerHTML = `
-        <div class="folder-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-        </div>
-        <span class="folder-name">${escapeHtml(folder.name)}</span>
-      `;
-      item.addEventListener('click', () => {
-        Config.set('folderId', folder.id);
-        if (dom.saFolderInput) dom.saFolderInput.value = folder.id;
-        loadFiles();
-        closeFolderModal();
-        showToast('已切换到文件夹: ' + folder.name, 'success');
-      });
-      dom.folderList.appendChild(item);
-    });
-  }
-
-  function closeFolderModal() {
-    dom.folderModal.classList.remove('active');
-  }
-
-  // === Logout ===
-
-  function onLogout() {
-    Config.set('folderId', '');
-    showLoginScreen();
-    Player.destroy();
   }
 
   // === Keyboard ===
