@@ -191,6 +191,10 @@ const Player = (() => {
     notifyStateChange();
   }
 
+  function getCurrentIndex() {
+    return currentIndex;
+  }
+
   function getCurrentTrack() {
     return (currentIndex >= 0 && currentIndex < playlist.length) ? playlist[currentIndex] : null;
   }
@@ -225,6 +229,6 @@ const Player = (() => {
     seekByPercent, seekBy,
     setVolume, toggleMute,
     toggleShuffle, cycleRepeatMode,
-    getCurrentTrack, getState, setCallbacks, destroy,
+    getCurrentIndex, getCurrentTrack, getState, setCallbacks, destroy,
   };
 })();
