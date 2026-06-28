@@ -13,15 +13,15 @@
 
 ## 系统要求
 
-- Linux 服务器（Ubuntu 20.04+ / Debian 11+ / CentOS 8+）或 macOS / Windows
-- Node.js 18+（推荐 20+）
+- Linux / macOS / Windows
+- Node.js 18+（推荐 22）
 - npm 9+
 - Google Cloud 项目 + Service Account 密钥
 
 ## 文件结构
 
 ```
-cloudtune/
+~/cloudtune/
 ├── index.html          # 前端页面（SA 模式，无需 OAuth2）
 ├── server.js           # Express 后端（SA 认证 + Drive API 代理 + Range 流式传输）
 ├── package.json        # 后端依赖
@@ -44,13 +44,14 @@ cloudtune/
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/dakerclaw/CloudTune.git /opt/cloudtune
-cd /opt/cloudtune
+# 安装到当前用户主目录下
+git clone https://github.com/dakerclaw/CloudTune.git ~/cloudtune
+cd ~/cloudtune
 ```
 
 ### 2. 安装 Node.js
 
-#### 方式 A：通过 NodeSource 安装（推荐）
+#### 方式 A：通过 NodeSource 安装（需要 sudo）
 
 ```bash
 # 安装前置依赖（最小化系统可能缺少 curl）
@@ -66,7 +67,7 @@ node -v   # 应 >= v18
 npm -v
 ```
 
-#### 方式 B：通过 Node 版本管理器安装
+#### 方式 B：通过 nvm 安装（无需 sudo，推荐）
 
 ```bash
 # 安装 nvm
@@ -83,7 +84,7 @@ npm -v
 ```
 
 > **注意**：使用 nvm 安装时，node 路径为 `~/.nvm/versions/node/v22.x/bin/node`，
-> systemd 服务中需用 `which node` 查看实际路径并替换 `ExecStart` 中的 `/usr/bin/node`。
+> systemd 服务中需用 `which node` 查看实际路径并替换 `ExecStart` 中的路径。
 
 #### CentOS / RHEL
 
@@ -97,7 +98,7 @@ node -v
 ### 3. 安装依赖
 
 ```bash
-cd /opt/cloudtune
+cd ~/cloudtune
 npm install
 ```
 
@@ -118,10 +119,10 @@ npm install
 
 ```bash
 # 将下载的 JSON 文件放到项目根目录，命名为 sa-key.json
-cp ~/Downloads/你的密钥文件.json /opt/cloudtune/sa-key.json
+cp ~/Downloads/你的密钥文件.json ~/cloudtune/sa-key.json
 
-# 设置安全权限（仅 root 可读）
-sudo chmod 600 /opt/cloudtune/sa-key.json
+# 设置安全权限（仅自己可读）
+chmod 600 ~/cloudtune/sa-key.json
 ```
 
 #### 共享音乐文件夹
@@ -137,12 +138,12 @@ sudo chmod 600 /opt/cloudtune/sa-key.json
 #### 配置环境变量
 
 ```bash
-cat > /opt/cloudtune/.env << 'EOF'
+cat > ~/cloudtune/.env << 'EOF'
 FOLDER_ID=你的文件夹ID
 PORT=3296
 EOF
 
-chmod 600 /opt/cloudtune/.env
+chmod 600 ~/cloudtune/.env
 ```
 
 > **提示**：`server.js` 会自动读取项目根目录下的 `.env` 文件，无需额外安装 `dotenv`。
@@ -150,7 +151,7 @@ chmod 600 /opt/cloudtune/.env
 ### 5. 测试启动
 
 ```bash
-cd /opt/cloudtune
+cd ~/cloudtune
 node server.js
 ```
 
@@ -169,22 +170,25 @@ node server.js
 
 ```
 🔧 Initializing CloudTune server...
-⚠️  Service Account key file NOT found at: /opt/cloudtune/sa-key.json
+⚠️  Service Account key file NOT found at: /home/你的用户名/cloudtune/sa-key.json
    Place your sa-key.json file in the project directory to enable music playback.
 
 🎵 CloudTune server running at http://localhost:3296
    ⚠️  SA not configured. Visit http://localhost:3296 for setup instructions.
 ```
 
-按 `Ctrl+C` 退出，继续配置 systemd 服务。
+---
 
-### 6. 配置 systemd 服务
+### 6. 配置 systemd 服务（开机自启，可选）
+
+> 如果不需要开机自启，每次手动运行 `node server.js` 即可。
 
 ```bash
-# 查看 node 实际路径（默认安装通常为 /usr/bin/node）
+# 查看 node 实际路径
 NODE_PATH=$(which node)
 echo "Node path: $NODE_PATH"
 
+# 创建 systemd 服务文件（将 YOUR_USER 替换为你的用户名）
 sudo tee /etc/systemd/system/cloudtune.service << EOF
 [Unit]
 Description=CloudTune Music Player
@@ -192,10 +196,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/opt/cloudtune
-EnvironmentFile=/opt/cloudtune/.env
-ExecStart=${NODE_PATH} server.js
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/cloudtune
+EnvironmentFile=/home/YOUR_USER/cloudtune/.env
+ExecStart=${NODE_PATH} /home/YOUR_USER/cloudtune/server.js
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -206,7 +210,7 @@ WantedBy=multi-user.target
 EOF
 ```
 
-### 7. 启动服务
+然后启动服务：
 
 ```bash
 sudo systemctl daemon-reload
@@ -220,7 +224,26 @@ sudo systemctl status cloudtune
 sudo journalctl -u cloudtune -f
 ```
 
-### 8. 配置 Nginx 反向代理（可选，推荐 HTTPS）
+> **提示**：将 `YOUR_USER` 替换为实际用户名，可以用 `whoami` 命令查看。
+
+### 7. 开放防火墙端口
+
+```bash
+# Ubuntu / Debian
+sudo ufw allow 3296/tcp
+sudo ufw reload
+sudo ufw status
+
+# CentOS / RHEL
+sudo firewall-cmd --permanent --add-port=3296/tcp
+sudo firewall-cmd --reload
+```
+
+### 8. 云服务器安全组（如适用）
+
+如果使用阿里云、腾讯云、AWS 等云服务器，还需在云控制台的**安全组**中手动开放 **3296** 端口（TCP 入站）。
+
+### 9. 配置 Nginx 反向代理（可选，推荐 HTTPS）
 
 ```bash
 sudo apt install -y nginx
@@ -268,28 +291,33 @@ sudo nginx -t && sudo systemctl reload nginx
 ## 更新
 
 ```bash
-cd /opt/cloudtune
+cd ~/cloudtune
 git pull origin main
 npm install
+# 如果配置了 systemd：
 sudo systemctl restart cloudtune
 ```
 
 ## 卸载
 
 ```bash
-# 停止并移除服务
+# 停止并移除服务（如果配置了 systemd）
 sudo systemctl stop cloudtune
 sudo systemctl disable cloudtune
 sudo rm /etc/systemd/system/cloudtune.service
 sudo systemctl daemon-reload
 
 # 删除项目文件
-sudo rm -rf /opt/cloudtune
+rm -rf ~/cloudtune
 
 # （可选）卸载 Node.js
+# 方式 A（NodeSource）：
 sudo apt purge -y nodejs
 sudo rm -rf /etc/apt/sources.list.d/nodesource.list
 sudo rm -rf /etc/apt/keyrings/nodesource.gpg
+
+# 方式 B（nvm）：
+rm -rf ~/.nvm
 ```
 
 ## 环境变量
@@ -320,12 +348,12 @@ npm install --registry=https://registry.npmmirror.com
 
 ```bash
 # 检查密钥文件格式
-cat /opt/cloudtune/sa-key.json | python3 -m json.tool
+cat ~/cloudtune/sa-key.json | python3 -m json.tool
 
 # 查看 client_email
-cat /opt/cloudtune/sa-key.json | grep client_email
+cat ~/cloudtune/sa-key.json | grep client_email
 
-# 查看服务日志
+# 查看服务日志（如果配置了 systemd）
 sudo journalctl -u cloudtune --no-pager -n 50
 ```
 
@@ -336,8 +364,8 @@ sudo journalctl -u cloudtune --no-pager -n 50
 sudo lsof -i :3296
 
 # 修改端口
-sed -i 's/PORT=3296/PORT=8080/' /opt/cloudtune/.env
-sudo systemctl restart cloudtune
+echo "PORT=8080" >> ~/cloudtune/.env
+# 然后重启服务
 ```
 
 ### systemd 服务启动失败
@@ -348,11 +376,20 @@ which node
 # 确保与 cloudtune.service 中 ExecStart 路径一致
 
 # 检查 .env 文件格式（不能有引号、不能有 export 前缀）
-cat /opt/cloudtune/.env
+cat ~/cloudtune/.env
 
 # 检查文件权限
-ls -la /opt/cloudtune/sa-key.json
-ls -la /opt/cloudtune/.env
+ls -la ~/cloudtune/sa-key.json
+ls -la ~/cloudtune/.env
+```
+
+### git pull 报错 `dubious ownership`
+
+```bash
+# 添加 safe.directory 例外
+git config --global --add safe.directory ~/cloudtune
+# 然后重新 pull
+cd ~/cloudtune && git pull origin main
 ```
 
 ### 音频文件未显示
