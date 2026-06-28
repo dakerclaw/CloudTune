@@ -109,13 +109,28 @@ validate_port() {
   return 0
 }
 
-# ─── 验证 FOLDER_ID ─────────────────────────────────────
+# ─── 验证并提取 FOLDER_ID ──────────────────────────────
 validate_folder_id() {
-  local id="$1"
-  if [ -z "$id" ]; then
+  local input="$1"
+  if [[ -z "$input" ]]; then
     warn "FOLDER_ID 不能为空"
     return 1
   fi
+  # 自动从 URL 中提取 ID
+  local extracted=""
+  if [[ "$input" =~ drive\.google\.com.*/folders/([a-zA-Z0-9_-]+) ]]; then
+    extracted="${BASH_REMATCH[1]}"
+  elif [[ "$input" =~ drive\.google\.com.*[?&]id=([a-zA-Z0-9_-]+) ]]; then
+    extracted="${BASH_REMATCH[1]}"
+  elif [[ "$input" =~ ^[a-zA-Z0-9_-]{10,}$ ]]; then
+    extracted="$input"
+  fi
+  if [[ -z "$extracted" ]]; then
+    warn "无法识别文件夹 ID，请检查输入"
+    return 1
+  fi
+  # 把提取结果写回全局变量
+  FOLDER_ID_EXTRACTED="$extracted"
   return 0
 }
 
@@ -303,12 +318,15 @@ main() {
   # 6.2 Google Drive 文件夹 ID
   echo ""
   info "6.2 配置 Google Drive 音乐文件夹 ID"
-  info "   获取方式：打开 Drive 文件夹 → 复制 URL 中的 ID"
+  info "   获取方式：打开 Drive 文件夹 → 复制浏览器中的完整 URL"
+  info "   脚本会自动从 URL 中提取 ID，也可以直接粘贴纯 ID"
   info "   示例: https://drive.google.com/drive/folders/1AbC2DeF3GhI4JkL5"
   local folder_id=""
+  FOLDER_ID_EXTRACTED=""
   while true; do
-    ask "FOLDER_ID" "$folder_id" folder_id
+    ask "FOLDER_ID（支持粘贴完整 URL）" "" folder_id
     if validate_folder_id "$folder_id"; then
+      folder_id="$FOLDER_ID_EXTRACTED"
       success "FOLDER_ID: $folder_id"
       break
     else
