@@ -61,7 +61,7 @@ const Drive = (() => {
       const response = await fetch(`/api/folders?${params}`);
       if (!response.ok) throw new Error(`Backend API error: ${response.status}`);
       const data = await response.json();
-      cachedFolders = data.files || [];
+      cachedFolders = data.folders || [];
       return cachedFolders;
     } catch (error) {
       console.error('Failed to list folders:', error);
