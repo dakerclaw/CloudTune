@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "google-auth-library": "^9.15.0"
+    "google-auth-library": "^10.9.0"
   }
 }
