@@ -118,11 +118,15 @@ validate_folder_id() {
   fi
   # 自动从 URL 中提取 ID
   local extracted=""
-  if [[ "$input" =~ drive\.google\.com.*/folders/([a-zA-Z0-9_-]+) ]]; then
+  local regex1="drive\.google\.com.*/folders/([a-zA-Z0-9_-]+)"
+  local regex2="drive\.google\.com.*[?&]id=([a-zA-Z0-9_-]+)"
+  local regex3="^[a-zA-Z0-9_-]{10,}$"
+  
+  if [[ "$input" =~ $regex1 ]]; then
     extracted="${BASH_REMATCH[1]}"
-  elif [[ "$input" =~ drive\.google\.com.*[?&]id=([a-zA-Z0-9_-]+) ]]; then
+  elif [[ "$input" =~ $regex2 ]]; then
     extracted="${BASH_REMATCH[1]}"
-  elif [[ "$input" =~ ^[a-zA-Z0-9_-]{10,}$ ]]; then
+  elif [[ "$input" =~ $regex3 ]]; then
     extracted="$input"
   fi
   if [[ -z "$extracted" ]]; then
