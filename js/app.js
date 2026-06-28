@@ -9,12 +9,7 @@
   const $ = id => document.getElementById(id);
 
   const dom = {
-    loginScreen: $('loginScreen'),
     appScreen: $('appScreen'),
-    saEmailDisplay: $('saEmailDisplay'),
-    saFolderInput: $('saFolderInput'),
-    saConnectBtn: $('saConnectBtn'),
-    loginError: $('loginError'),
     searchInput: $('searchInput'),
     headerSettingsBtn: $('headerSettingsBtn'),
     tabBtns: document.querySelectorAll('.tab-btn'),
@@ -82,28 +77,29 @@
 
     const saAvailable = await Drive.detectMode();
     if (!saAvailable) {
-      showLoginError('无法连接后端服务器，请确保 server.js 已启动。');
+      document.body.innerHTML = '<div style="color:#ef4444;padding:40px;text-align:center;font-size:1.1rem;">无法连接后端服务器，请确保 server.js 已启动。</div>';
       return;
     }
 
-    setupSAMode();
-  }
-
-  // === SA Mode ===
-
-  function setupSAMode() {
+    // 显示设置弹窗中的 SA 邮箱
     const status = Drive.getBackendStatus();
-    if (dom.saEmailDisplay && status.saEmail) {
-      dom.saEmailDisplay.textContent = status.saEmail;
+    if (status && status.saEmail && dom.saEmailDisplay2) {
+      dom.saEmailDisplay2.textContent = status.saEmail;
     }
 
-    const savedFolder = Config.get('folderId') || status.folderId || '';
-    if (dom.saFolderInput) dom.saFolderInput.value = savedFolder;
-    if (dom.saConnectBtn) {
-      dom.saConnectBtn.disabled = !savedFolder;
-    }
+    // 优先用 localStorage 中的 folderId，其次用后端配置的 folderId
+    const savedFolder = Config.get('folderId') || (status && status.folderId) || '';
 
-    if (savedFolder) enterApp();
+    // 显示主界面
+    dom.appScreen.classList.add('active');
+
+    if (savedFolder) {
+      // 已有文件夹 ID，直接加载
+      loadFiles();
+    } else {
+      // 没有配置，弹出设置弹窗
+      dom.settingsModal.classList.add('active');
+    }
   }
 
   // === Events ===
@@ -111,18 +107,6 @@
   function bindEvents() {
     window.addEventListener('files-loaded', onFilesLoaded);
     window.addEventListener('drive-error', onDriveError);
-
-    // Login screen
-    if (dom.saFolderInput) {
-      dom.saFolderInput.addEventListener('input', () => {
-        if (dom.saConnectBtn) {
-          dom.saConnectBtn.disabled = !dom.saFolderInput.value.trim();
-        }
-      });
-    }
-    if (dom.saConnectBtn) {
-      dom.saConnectBtn.addEventListener('click', onSAConnect);
-    }
 
     dom.searchInput.addEventListener('input', onSearchInput);
     if (dom.headerSettingsBtn) {
@@ -148,61 +132,29 @@
     dom.pbInfo.addEventListener('click', () => switchTab('playing'));
     dom.pbArt.addEventListener('click', () => switchTab('playing'));
 
-    dom.saveSettingsBtn.addEventListener('click', onSaveSettings);
-    dom.cancelSettingsBtn.addEventListener('click', closeSettingsModal);
-
-    dom.settingsModal.addEventListener('click', (e) => {
-      if (e.target === dom.settingsModal) closeSettingsModal();
-    });
-  }
-
-  function onSAConnect() {
-    const folderId = dom.saFolderInput?.value.trim();
-    if (!folderId) {
-      showLoginError('请输入 Google Drive 文件夹 ID');
-      return;
+    if (dom.saveSettingsBtn) {
+      dom.saveSettingsBtn.addEventListener('click', onSaveSettings);
     }
-    Config.set('folderId', folderId);
-    dom.loginError.style.display = 'none';
-    enterApp();
-  }
-
-  // === Screens ===
-
-  function enterApp() {
-    dom.loginScreen.classList.remove('active');
-    dom.appScreen.classList.add('active');
-    loadFiles();
-  }
-
-  function showLoginScreen() {
-    dom.appScreen.classList.remove('active');
-    dom.loginScreen.classList.add('active');
-    Player.destroy();
-  }
-
-  function showLoginError(msg) {
-    if (dom.loginError) {
-      dom.loginError.textContent = msg;
-      dom.loginError.style.display = 'block';
+    if (dom.cancelSettingsBtn) {
+      dom.cancelSettingsBtn.addEventListener('click', closeSettingsModal);
     }
-  }
 
-  // === Tabs ===
+    if (dom.settingsModal) {
+      dom.settingsModal.addEventListener('click', (e) => {
+        if (e.target === dom.settingsModal) closeSettingsModal();
+      });
+    }
 
-  function switchTab(tab) {
-    currentTab = tab;
-    dom.tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
-    dom.songsTab.classList.toggle('active', tab === 'songs');
-    dom.songsTab.style.display = tab === 'songs' ? '' : 'none';
-    dom.playingTab.classList.toggle('active', tab === 'playing');
-    dom.playingTab.style.display = tab === 'playing' ? 'flex' : 'none';
+    document.addEventListener('keydown', onKeydown);
   }
 
   // === Files ===
 
   async function loadFiles() {
-    const folderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : (Config.get('folderId') || null);
+    const folderId = folderStack.length > 0
+      ? folderStack[folderStack.length - 1].id
+      : (Config.get('folderId') || null);
+
     dom.loadingState.style.display = 'flex';
     dom.emptyState.style.display = 'none';
     dom.songList.innerHTML = '';
@@ -224,7 +176,6 @@
 
   function onFilesLoaded(e) {
     dom.loadingState.style.display = 'none';
-    // Use already cached allFiles and allFolders
     renderItems();
   }
 
@@ -412,7 +363,7 @@
           allFiles = files;
           renderItems();
         }).catch(() => {
-          renderItemsFromList([...allFolders, ...filtered]);
+          renderItems();
         });
       }
     }, 300);
@@ -498,10 +449,11 @@
   // === Settings ===
 
   function onSettingsClick() {
+    // Populate folder ID from config
     dom.settingsFolderId.value = Config.get('folderId') || '';
     // Populate SA email in settings modal
     const status = Drive.getBackendStatus();
-    if (dom.saEmailDisplay2 && status.saEmail) {
+    if (dom.saEmailDisplay2 && status && status.saEmail) {
       dom.saEmailDisplay2.textContent = status.saEmail;
     }
     dom.settingsModal.classList.add('active');
@@ -518,6 +470,17 @@
 
   function closeSettingsModal() {
     dom.settingsModal.classList.remove('active');
+  }
+
+  // === Tabs ===
+
+  function switchTab(tab) {
+    currentTab = tab;
+    dom.tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+    dom.songsTab.classList.toggle('active', tab === 'songs');
+    dom.songsTab.style.display = tab === 'songs' ? '' : 'none';
+    dom.playingTab.classList.toggle('active', tab === 'playing');
+    dom.playingTab.style.display = tab === 'playing' ? 'flex' : 'none';
   }
 
   // === Keyboard ===
