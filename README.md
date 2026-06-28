@@ -243,49 +243,6 @@ sudo firewall-cmd --reload
 
 如果使用阿里云、腾讯云、AWS 等云服务器，还需在云控制台的**安全组**中手动开放 **3296** 端口（TCP 入站）。
 
-### 9. 配置 Nginx 反向代理（可选，推荐 HTTPS）
-
-```bash
-sudo apt install -y nginx
-
-sudo tee /etc/nginx/sites-available/cloudtune << 'EOF'
-server {
-    listen 80;
-    server_name music.yourdomain.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name music.yourdomain.com;
-
-    ssl_certificate     /etc/ssl/certs/your-cert.pem;
-    ssl_certificate_key /etc/ssl/private/your-key.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:3296;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_request_buffering off;
-    }
-
-    location /api/stream/ {
-        proxy_pass http://127.0.0.1:3296;
-        proxy_set_header Host $host;
-        proxy_set_header Range $http_range;
-        proxy_buffering off;
-        proxy_request_buffering off;
-    }
-}
-EOF
-
-sudo ln -sf /etc/nginx/sites-available/cloudtune /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-```
-
 ---
 
 ## 更新
