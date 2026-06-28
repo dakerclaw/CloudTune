@@ -16,56 +16,6 @@
 
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Setup Screen: shown when sa-key.json is missing -->
-  <div id="setupScreen" class="screen">
-    <div class="login-logo">
-      <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
-    </div>
-    <h1 class="login-title">CloudTune</h1>
-    <p class="login-subtitle">云端音乐播放器 — 初始化配置</p>
-
-    <div class="setup-steps">
-      <div class="setup-step">
-        <div class="setup-step-num">1</div>
-        <div class="setup-step-content">
-          <strong>创建 Service Account</strong>
-          <p>前往 <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a>，
-          创建项目 → IAM 与管理 → 服务账号 → 创建服务账号，
-          点击"密钥"标签 → 添加密钥 → 创建新密钥（JSON格式），下载到本地。</p>
-        </div>
-      </div>
-      <div class="setup-step">
-        <div class="setup-step-num">2</div>
-        <div class="setup-step-content">
-          <strong>上传密钥文件</strong>
-          <p>将下载的 JSON 密钥文件重命名为 <code>sa-key.json</code>，
-          上传到服务器项目目录：<code id="setupServerPath"></code></p>
-        </div>
-      </div>
-      <div class="setup-step">
-        <div class="setup-step-num">3</div>
-        <div class="setup-step-content">
-          <strong>共享 Drive 文件夹</strong>
-          <p>在 Google Drive 中，将音乐文件夹共享给 Service Account 的邮箱地址（查看者权限）。
-          邮箱地址可在 sa-key.json 的 <code>client_email</code> 字段中找到。</p>
-        </div>
-      </div>
-      <div class="setup-step">
-        <div class="setup-step-num">4</div>
-        <div class="setup-step-content">
-          <strong>配置文件夹 ID 并重启</strong>
-          <p>在项目目录创建 <code>.env</code> 文件，写入 <code>FOLDER_ID=你的文件夹ID</code>，
-          然后重启服务：<code>node server.js</code> 或 <code>systemctl restart cloudtune</code>。</p>
-        </div>
-      </div>
-    </div>
-
-    <button id="setupCheckBtn" class="login-btn">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-      我已配置完成，刷新页面
-    </button>
-  </div>
-
   <!-- Login Screen (SA mode only) -->
   <div id="loginScreen" class="screen">
     <div class="login-logo">

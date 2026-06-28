@@ -50,14 +50,12 @@ const AUDIO_MIME_TYPES = [
 // === Google Auth (SA-only) ===
 let authClient = null;
 let saEmail = '';
-let saConfigured = false;
 
 async function initAuth() {
   if (!fs.existsSync(SA_KEY_PATH)) {
-    console.warn('⚠️  Service Account key file NOT found at:', SA_KEY_PATH);
-    console.warn('   Frontend will show setup guide.');
-    saConfigured = false;
-    return;
+    console.error('❌ Service Account key file NOT found at:', SA_KEY_PATH);
+    console.error('   Please place your sa-key.json file in the project directory.');
+    process.exit(1);
   }
 
   try {
@@ -72,11 +70,10 @@ async function initAuth() {
     const client = await authClient.getClient();
     await client.getAccessToken();
 
-    saConfigured = true;
     console.log('✅ Service Account authenticated as:', saEmail);
   } catch (err) {
     console.error('❌ Service Account auth failed:', err.message);
-    saConfigured = false;
+    process.exit(1);
   }
 }
 
@@ -113,8 +110,7 @@ app.use(express.static(path.join(__dirname), {
 app.get('/api/status', (req, res) => {
   res.json({
     mode: 'service-account',
-    saConfigured,
-    saEmail: saConfigured ? saEmail : '',
+    saEmail,
     folderId: FOLDER_ID || null,
     version: '1.0.0',
   });
@@ -122,8 +118,6 @@ app.get('/api/status', (req, res) => {
 
 // List audio files in folder
 app.get('/api/files', async (req, res) => {
-  if (!saConfigured) return res.status(503).json({ error: 'Service Account not configured' });
-
   const folderId = req.query.folderId || FOLDER_ID;
   if (!folderId) return res.status(400).json({ error: 'folderId is required' });
 
@@ -146,8 +140,6 @@ app.get('/api/files', async (req, res) => {
 
 // List sub-folders
 app.get('/api/folders', async (req, res) => {
-  if (!saConfigured) return res.status(503).json({ error: 'Service Account not configured' });
-
   const parentId = req.query.parentId || FOLDER_ID;
   if (!parentId) return res.status(400).json({ error: 'parentId is required' });
 
@@ -169,8 +161,6 @@ app.get('/api/folders', async (req, res) => {
 
 // Stream audio file (supports Range requests for seeking)
 app.get('/api/stream/:fileId', async (req, res) => {
-  if (!saConfigured) return res.status(503).json({ error: 'Service Account not configured' });
-
   const fileId = req.params.fileId;
   const range = req.headers.range;
 
@@ -233,13 +223,9 @@ async function start() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🎵 CloudTune server running at http://0.0.0.0:${PORT}`);
-    if (saConfigured) {
-      console.log(`   SA Email: ${saEmail}`);
-      console.log(`   Share your music folder with: ${saEmail}`);
-      if (FOLDER_ID) console.log(`   Folder ID: ${FOLDER_ID}`);
-    } else {
-      console.log(`   ⚠️  SA not configured — visit http://0.0.0.0:${PORT} for setup guide`);
-    }
+    console.log(`   SA Email: ${saEmail}`);
+    console.log(`   Share your music folder with: ${saEmail}`);
+    if (FOLDER_ID) console.log(`   Folder ID: ${FOLDER_ID}`);
     console.log('');
   });
 }
