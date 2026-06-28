@@ -11,14 +11,13 @@ set -uo pipefail
 if [ ! -t 0 ]; then
   TMP_SCRIPT=$(mktemp /tmp/cloudtune-install.XXXXXX.sh 2>/dev/null || echo "/tmp/cloudtune-install.$$.sh")
   printf "\033[1;33m⚠️  检测到 stdin 被管道占用（curl | bash），自动重新启动交互式安装...\033[0m\n"
-  if command -v curl &>/dev/null; then
+  if command -v curl >/dev/null 2>&1; then
     curl -fsSL "https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh" -o "$TMP_SCRIPT" 2>/dev/null
-  elif command -v wget &>/dev/null; then
+  elif command -v wget >/dev/null 2>&1; then
     wget -q "https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh" -O "$TMP_SCRIPT" 2>/dev/null
   fi
   if [ -s "$TMP_SCRIPT" ]; then
     chmod +x "$TMP_SCRIPT"
-    # 用 exec 替换当前进程，并把 stdin 重定向到 /dev/tty
     exec bash "$TMP_SCRIPT" < /dev/tty
   else
     rm -f "$TMP_SCRIPT"
@@ -29,29 +28,29 @@ if [ ! -t 0 ]; then
   fi
 fi
 
-# ─── 颜色 ─────────────────────────────────────────────
+# ─── 颜色 ────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
-info()    { printf "${BLUE}ℹ️  %s${NC}\n" "$*"; }
-success(){ printf "${GREEN}✅ %s${NC}\n" "$*"; }
-warn()    { printf "${YELLOW}⚠️  %s${NC}\n" "$*"; }
+info()    { printf "${BLUE}ℹ️  %s${NC}\n" "$*" >&2; }
+success(){ printf "${GREEN}✅ %s${NC}\n" "$*" >&2; }
+warn()    { printf "${YELLOW}⚠️  %s${NC}\n" "$*" >&2; }
 error()   { printf "${RED}❌ %s${NC}\n" "$*" >&2; }
-step()    { printf "\n${BOLD}${CYAN}▶ %s${NC}\n" "$*"; }
+step()    { printf "\n${BOLD}${CYAN}▶ %s${NC}\n" "$*" >&2; }
 
 # ─── 检测包管理器 ─────────────────────────────────────
 detect_pkg() {
-  if command -v apt &>/dev/null; then PKG=apt
-  elif command -v dnf &>/dev/null; then PKG=dnf
-  elif command -v yum &>/dev/null; then PKG=yum
-  elif command -v pacman &>/dev/null; then PKG=pacman
+  if command -v apt >/dev/null 2>&1; then PKG=apt
+  elif command -v dnf >/dev/null 2>&1; then PKG=dnf
+  elif command -v yum >/dev/null 2>&1; then PKG=yum
+  elif command -v pacman >/dev/null 2>&1; then PKG=pacman
   else PKG=unknown
   fi
 }
 
 # ─── 检测 init 系统 ─────────────────────────────────────
 detect_init() {
-  if command -v systemctl &>/dev/null && systemctl --version &>/dev/null 2>&1; then
+  if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
     INIT=systemd
   else
     INIT=other
@@ -61,8 +60,8 @@ detect_init() {
 # ─── 询问（带默认值）────────────────────────────────────
 ask() {
   local prompt="$1" default="$2" varname="$3"
-  local input
-  if [[ -n "$default" ]]; then
+  local input=""
+  if [ -n "$default" ]; then
     printf "${YELLOW}%s ${NC}[%s]: " "$prompt" "$default" >&2
   else
     printf "${YELLOW}%s${NC}: " "$prompt" >&2
@@ -75,9 +74,9 @@ ask() {
 # ─── 询问（是/否）──────────────────────────────────────
 ask_yesno() {
   local prompt="$1" default="${2:-Y}" varname="$3"
-  local input
+  local input=""
   while true; do
-    if [[ "$default" == "Y" ]]; then
+    if [ "$default" = "Y" ]; then
       printf "${YELLOW}%s ${NC}[Y/n]: " "$prompt" >&2
     else
       printf "${YELLOW}%s ${NC}[y/N]: " "$prompt" >&2
@@ -95,11 +94,15 @@ ask_yesno() {
 # ─── 验证端口号 ─────────────────────────────────────────
 validate_port() {
   local port="$1"
-  if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+  # 检查是否为数字
+  if ! [ "$port" -eq "$port" ] 2>/dev/null; then
+    return 1
+  fi
+  if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
     return 1
   fi
   # 检查端口是否被占用
-  if command -v lsof &>/dev/null && lsof -i:"$port" &>/dev/null; then
+  if command -v lsof >/dev/null 2>&1 && lsof -i:"$port" >/dev/null 2>&1; then
     warn "端口 $port 已被占用"
     return 1
   fi
@@ -109,7 +112,7 @@ validate_port() {
 # ─── 验证 FOLDER_ID ─────────────────────────────────────
 validate_folder_id() {
   local id="$1"
-  if [[ -z "$id" ]]; then
+  if [ -z "$id" ]; then
     warn "FOLDER_ID 不能为空"
     return 1
   fi
@@ -119,32 +122,45 @@ validate_folder_id() {
 # ─── 验证 SA 密钥 JSON ──────────────────────────────────
 validate_sa_key() {
   local content="$1"
-  # 用 node 验证 JSON（比 python3 更通用）
-  if echo "$content" | node -e "
-    let d = '';
-    process.stdin.on('data', c => d += c);
-    process.stdin.on('end', () => {
+  # 用 node 验证 JSON（使用单引号包裹 JS 代码避免引号冲突）
+  echo "$content" | node -e '
+    let d="";
+    process.stdin.on("data", c => d += c);
+    process.stdin.on("end", () => {
       try {
         const j = JSON.parse(d);
         if (j.client_email && j.private_key) process.exit(0);
         else process.exit(1);
       } catch(e) { process.exit(1); }
     });
-  " 2>/dev/null; then
-    return 0
+  ' 2>/dev/null
+  return $?
+}
+
+# ─── nvm 安装 Node.js ─────────────────────────────────────
+install_nvm() {
+  info "正在通过 nvm 安装 Node.js 22 ..."
+  # 检查 nvm 是否已安装
+  if [ -s "$HOME/.nvm/nvm.sh" ]; then
+    info "nvm 已安装，跳过安装步骤"
+    . "$HOME/.nvm/nvm.sh"
   else
-    error "SA 密钥 JSON 格式不正确，或缺少 client_email / private_key 字段"
-    return 1
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   fi
+  nvm install 22
+  nvm use 22
+  success "Node.js $(node -v) 安装成功 (nvm)"
 }
 
 # ─── 主流程 ─────────────────────────────────────────────
 main() {
   echo -e "${BOLD}${CYAN}"
   echo "╔════════════════════════════════════════════════════╗"
-  echo "║                                                      ║"
+  echo "║                                                  ║"
   echo "║           🎵  CloudTune 一键安装脚本  🎵             ║"
-  echo "║                                                      ║"
+  echo "║                                                  ║"
   echo "╚════════════════════════════════════════════════════╝"
   echo -e "${NC}"
 
@@ -158,27 +174,32 @@ main() {
 
   # ── 步骤 2：检查 / 安装 Node.js ───────────────────
   step "步骤 2/8 — 检查 Node.js"
-
   local need_node=true
-  if command -v node &>/dev/null; then
+  if command -v node >/dev/null 2>&1; then
     local node_ver
     node_ver=$(node -v)
     local major="${node_ver#v}"
     major="${major%%.*}"
-    if (( major >= 18 )); then
+    if [ "$major" -ge 18 ] 2>/dev/null; then
       need_node=false
-      success "Node.js 已安装: $node_ver ($(which node))"
+      success "Node.js 已安装: $node_ver ($(command -v node))"
     else
       warn "Node.js 版本过低 ($node_ver)，需要 18+"
     fi
   fi
 
-  if $need_node; then
+  if $need_node 2>/dev/null; then
     echo ""
     info "未检测到 Node.js 18+，需要安装"
-    if [[ $EUID -eq 0 ]] || sudo -n true 2>/dev/null; then
+    local can_sudo=false
+    if [ "$(id -u)" -eq 0 ] 2>/dev/null; then
+      can_sudo=true
+    elif sudo -n true 2>/dev/null; then
+      can_sudo=true
+    fi
+    if $can_sudo; then
       ask_yesno "使用系统包管理器安装 Node.js 22？（需要 sudo）" "Y" use_apt
-      if [[ "$use_apt" == "Y" ]]; then
+      if [ "$use_apt" = "Y" ]; then
         info "正在安装 Node.js 22 ..."
         case "$PKG" in
           apt)
@@ -209,30 +230,29 @@ main() {
     fi
   fi
 
-  # 确保 node 在当前 shell 可用（nvm 安装后需要 reload）
-  if ! command -v node &>/dev/null; then
+  # 确保 node 在当前 shell 可用（nvm 安装后需要 source）
+  if ! command -v node >/dev/null 2>&1; then
     export NVM_DIR="$HOME/.nvm"
-    # shellcheck disable=SC1091
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   fi
 
-  if ! command -v node &>/dev/null; then
+  if ! command -v node >/dev/null 2>&1; then
     error "Node.js 未安装，请手动安装后重试"
     exit 1
   fi
   local NODE_PATH
-  NODE_PATH=$(which node)
+  NODE_PATH="$(command -v node)"
 
   # ── 步骤 3：选择安装目录 ────────────────────────────
   step "步骤 3/8 — 选择安装目录"
-  local INSTALL_DIR
+  local INSTALL_DIR=""
   ask "安装目录" "$HOME/cloudtune" INSTALL_DIR
   INSTALL_DIR="${INSTALL_DIR/#\~/$HOME}"
 
-  if [[ -d "$INSTALL_DIR" ]]; then
+  if [ -d "$INSTALL_DIR" ]; then
     warn "目录已存在: $INSTALL_DIR"
     ask_yesno "删除并重新安装？" "N" overwrite
-    if [[ "$overwrite" == "Y" ]]; then
+    if [ "$overwrite" = "Y" ]; then
       rm -rf "$INSTALL_DIR"
     else
       error "安装已取消"
@@ -242,7 +262,7 @@ main() {
 
   # ── 步骤 4：克隆项目 ────────────────────────────────
   step "步骤 4/8 — 克隆 CloudTune 项目"
-  if ! command -v git &>/dev/null; then
+  if ! command -v git >/dev/null 2>&1; then
     error "git 未安装，请先安装 git"
     exit 1
   fi
@@ -253,7 +273,7 @@ main() {
 
   # ── 步骤 5：安装依赖 ────────────────────────────────
   step "步骤 5/8 — 安装 npm 依赖"
-  cd "$INSTALL_DIR"
+  cd "$INSTALL_DIR" || { error "无法进入目录 $INSTALL_DIR"; exit 1; }
   if npm install --registry=https://registry.npmmirror.com 2>/dev/null; then
     success "依赖安装完成（淘宝镜像）"
   elif npm install; then
@@ -299,59 +319,111 @@ main() {
   # 6.3 Service Account 密钥
   echo ""
   info "6.3 配置 Service Account 密钥"
-  info "   获取方式："
-  info "   1. 打开 https://console.cloud.google.com/"
-  info "   2. IAM & Admin → Service Accounts → Create Service Account"
-  info "   3. 点击 Keys → Add Key → Create new key → JSON → 下载"
   echo ""
-  info "请选择 SA 密钥 JSON 文件："
-  info "  （可直接拖拽文件到终端窗口，或输入完整路径）"
-  local sa_key_path=""
+  info "请选择 SA 密钥输入方式："
+  echo "  ${CYAN}1${NC}) 直接粘贴 JSON 内容（推荐，从 Windows 复制后粘贴）"
+  echo "  ${CYAN}2${NC}) 输入 JSON 文件路径（可拖拽文件到终端）"
+  echo "  ${CYAN}3${NC}) 跳过，稍后手动配置"
+  echo ""
   local sa_key_content=""
+  local sa_input_method=""
   while true; do
-    ask "SA 密钥文件路径（留空则跳过，稍后手动配置）" "" sa_key_path
-    if [[ -z "$sa_key_path" ]]; then
-      warn "跳过 SA 密钥配置"
-      info "安装完成后，请将 SA 密钥 JSON 文件命名为 sa-key.json"
-      info "放到: $INSTALL_DIR/sa-key.json"
-      break
-    fi
-    # 去除路径两端可能的引号
-    sa_key_path="${sa_key_path#\"}"
-    sa_key_path="${sa_key_path%\"}"
-    sa_key_path="${sa_key_path#\'}"
-    sa_key_path="${sa_key_path%\'}"
-    if [[ -f "$sa_key_path" ]]; then
-      sa_key_content=$(cat "$sa_key_path")
-      if validate_sa_key "$sa_key_content"; then
-        echo "$sa_key_content" > "$INSTALL_DIR/sa-key.json"
-        chmod 600 "$INSTALL_DIR/sa-key.json"
-        success "sa-key.json 已写入: $INSTALL_DIR/sa-key.json"
-        # 提取 SA email
-        local sa_email
-        sa_email=$(echo "$sa_key_content" | node -e "
-          let d=''; process.stdin.on('data',c=>d+=c);
-          process.stdin.on('end',()=>{
-            try{console.log(JSON.parse(d).client_email||'')}catch(e){}
-          });
-        " 2>/dev/null || echo "")
-        if [[ -n "$sa_email" ]]; then
-          echo ""
-          warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          warn "  重要：请将以下邮箱添加为 Google Drive 音乐文件夹的 Viewer"
-          warn "  $sa_email"
-          warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          read -r -p "$(echo -e ${YELLOW}已共享文件夹？按 Enter 继续...${NC})" _
+    printf "${YELLOW}请选择 [1/2/3，默认 1]${NC}: "
+    read -r sa_input_method
+    sa_input_method="${sa_input_method:-1}"
+    case "$sa_input_method" in
+      1)
+        echo ""
+        info "请将 SA 密钥 JSON 内容粘贴到下方"
+        info "  （从 Windows 下载的 JSON 文件，用记事本打开后全选复制，右键粘贴到此处）"
+        info "  （粘贴后单独输入 done 并回车确认）"
+        echo ""
+        sa_key_content=""
+        local paste_line
+        while IFS= read -r paste_line; do
+          [ "$paste_line" = "done" ] && break
+          if [ -z "$sa_key_content" ]; then
+            sa_key_content="$paste_line"
+          else
+            sa_key_content="${sa_key_content}
+${paste_line}"
+          fi
+        done
+        if [ -z "$sa_key_content" ]; then
+          warn "未检测到输入，请重新选择"
+          continue
         fi
+        if validate_sa_key "$sa_key_content"; then
+          echo "$sa_key_content" > "$INSTALL_DIR/sa-key.json"
+          chmod 600 "$INSTALL_DIR/sa-key.json"
+          success "sa-key.json 已写入: $INSTALL_DIR/sa-key.json"
+          break
+        else
+          error "JSON 格式验证失败，请重新输入"
+          continue
+        fi
+        ;;
+      2)
+        local sa_key_path=""
+        ask "SA 密钥文件路径（可拖拽文件到终端）" "" sa_key_path
+        if [ -z "$sa_key_path" ]; then
+          warn "未输入路径，请重新选择"
+          continue
+        fi
+        # 去除路径两端可能的引号（拖拽文件时某些终端会自动加引号）
+        sa_key_path="${sa_key_path#\"}"
+        sa_key_path="${sa_key_path%\"}"
+        sa_key_path="${sa_key_path#\'}"
+        sa_key_path="${sa_key_path%\'}"
+        if [ -f "$sa_key_path" ]; then
+          sa_key_content=$(cat "$sa_key_path")
+          if validate_sa_key "$sa_key_content"; then
+            echo "$sa_key_content" > "$INSTALL_DIR/sa-key.json"
+            chmod 600 "$INSTALL_DIR/sa-key.json"
+            success "sa-key.json 已写入: $INSTALL_DIR/sa-key.json"
+            break
+          else
+            error "SA 密钥验证失败，请检查文件内容"
+            continue
+          fi
+        else
+          error "文件不存在: $sa_key_path"
+          continue
+        fi
+        ;;
+      3)
+        warn "跳过 SA 密钥配置"
+        info "安装完成后，请将 SA 密钥 JSON 文件命名为 sa-key.json"
+        info "放到: $INSTALL_DIR/sa-key.json"
         break
-      else
-        error "SA 密钥验证失败，请重新输入路径"
-      fi
-    else
-      error "文件不存在: $sa_key_path"
-    fi
+        ;;
+      *)
+        warn "请输入 1、2 或 3"
+        continue
+        ;;
+    esac
   done
+
+  # 如果已写入 sa-key.json，提示共享文件夹
+  if [ -s "$INSTALL_DIR/sa-key.json" ]; then
+    local sa_email=""
+    sa_email=$(cat "$INSTALL_DIR/sa-key.json" | node -e '
+      let d="";
+      process.stdin.on("data",c=>d+=c);
+      process.stdin.on("end",()=>{
+        try{console.log(JSON.parse(d).client_email||"")}catch(e){}
+      });
+    ' 2>/dev/null || echo "")
+    if [ -n "$sa_email" ]; then
+      echo ""
+      warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      warn "  重要：请将以下邮箱添加为 Google Drive 音乐文件夹的查看者"
+      warn "  $sa_email"
+      warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo ""
+      read -r -p "$(echo -e "${YELLOW}已共享文件夹？按 Enter 继续...${NC}")" _
+    fi
+  fi
 
   # 6.4 写入 .env 文件
   echo ""
@@ -367,7 +439,7 @@ EOF
   step "步骤 7/8 — 启动测试"
   echo ""
   info "正在启动 CloudTune 服务进行测试 ..."
-  cd "$INSTALL_DIR"
+  cd "$INSTALL_DIR" || { error "无法进入目录 $INSTALL_DIR"; exit 1; }
   node server.js > /tmp/cloudtune-test.log 2>&1 &
   local server_pid=$!
   sleep 5
@@ -380,7 +452,7 @@ EOF
     echo ""
     info "本地访问地址: http://localhost:${port}"
     echo ""
-    read -r -p "$(echo -e ${YELLOW}按 Enter 停止测试服务并继续...${NC})" _
+    read -r -p "$(echo -e "${YELLOW}按 Enter 停止测试服务并继续...${NC}")" _
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   else
@@ -392,10 +464,10 @@ EOF
 
   # ── 步骤 8：配置 systemd（可选）────────────────────
   step "步骤 8/8 — 配置开机自启（可选）"
-  if [[ "$INIT" == "systemd" ]]; then
+  if [ "$INIT" = "systemd" ]; then
     ask_yesno "配置 systemd 开机自启？" "Y" setup_systemd
-    if [[ "$setup_systemd" == "Y" ]]; then
-      local current_user
+    if [ "$setup_systemd" = "Y" ]; then
+      local current_user=""
       current_user=$(whoami)
       local service_file="/etc/systemd/system/cloudtune.service"
       sudo tee "$service_file" > /dev/null << SVC
@@ -440,12 +512,12 @@ SVC
   # ── 开放防火墙端口 ──────────────────────────────────
   echo ""
   ask_yesno "是否开放防火墙端口 ${port}？" "Y" open_fw
-  if [[ "$open_fw" == "Y" ]]; then
-    if command -v ufw &>/dev/null; then
+  if [ "$open_fw" = "Y" ]; then
+    if command -v ufw >/dev/null 2>&1; then
       sudo ufw allow "${port}/tcp"
       sudo ufw reload 2>/dev/null || true
       success "防火墙端口 $port 已开放 (ufw)"
-    elif command -v firewall-cmd &>/dev/null; then
+    elif command -v firewall-cmd >/dev/null 2>&1; then
       sudo firewall-cmd --permanent --add-port="${port}/tcp"
       sudo firewall-cmd --reload
       success "防火墙端口 $port 已开放 (firewalld)"
@@ -458,19 +530,19 @@ SVC
   echo ""
   echo -e "${BOLD}${GREEN}"
   echo "╔════════════════════════════════════════════════════╗"
-  echo "║                                                      ║"
+  echo "║                                                  ║"
   echo "║             🎉  安装完成！  🎉                      ║"
-  echo "║                                                      ║"
+  echo "║                                                  ║"
   echo "╚════════════════════════════════════════════════════╝"
   echo -e "${NC}"
   echo ""
   info "安装目录: $INSTALL_DIR"
-  local server_ip
+  local server_ip=""
   server_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "YOUR_SERVER_IP")
   info "访问地址: http://${server_ip}:${port}"
   info "本地访问: http://localhost:${port}"
   echo ""
-  if [[ "$setup_systemd" != "Y" ]]; then
+  if [ "${setup_systemd:-N}" != "Y" ]; then
     info "启动服务: cd ${INSTALL_DIR} && node server.js"
   else
     info "服务管理: sudo systemctl status cloudtune"
@@ -478,25 +550,6 @@ SVC
   echo ""
   warn "云服务器请注意：还需在云控制台安全组中开放端口 ${port}"
   echo ""
-}
-
-# ─── nvm 安装 Node.js ─────────────────────────────────────
-install_nvm() {
-  info "正在通过 nvm 安装 Node.js 22 ..."
-  # 检查 nvm 是否已安装
-  if [[ -s "$HOME/.nvm/nvm.sh" ]]; then
-    info "nvm 已安装，跳过安装步骤"
-    # shellcheck disable=SC1091
-    . "$HOME/.nvm/nvm.sh"
-  else
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-    export NVM_DIR="$HOME/.nvm"
-    # shellcheck disable=SC1091
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  fi
-  nvm install 22
-  nvm use 22
-  success "Node.js $(node -v) 安装成功 (nvm)"
 }
 
 main "$@"
