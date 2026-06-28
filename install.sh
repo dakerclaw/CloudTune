@@ -322,13 +322,12 @@ main() {
   echo ""
   info "请选择 SA 密钥输入方式："
   echo "  ${CYAN}1${NC}) 直接粘贴 JSON 内容（推荐，从 Windows 复制后粘贴）"
-  echo "  ${CYAN}2${NC}) 输入 JSON 文件路径（可拖拽文件到终端）"
-  echo "  ${CYAN}3${NC}) 跳过，稍后手动配置"
+  echo "  ${CYAN}2${NC}) 跳过，稍后手动配置"
   echo ""
   local sa_key_content=""
   local sa_input_method=""
   while true; do
-    printf "${YELLOW}请选择 [1/2/3，默认 1]${NC}: "
+    printf "${YELLOW}请选择 [1/2，默认 1]${NC}: "
     read -r sa_input_method
     sa_input_method="${sa_input_method:-1}"
     case "$sa_input_method" in
@@ -364,41 +363,13 @@ ${paste_line}"
         fi
         ;;
       2)
-        local sa_key_path=""
-        ask "SA 密钥文件路径（可拖拽文件到终端）" "" sa_key_path
-        if [ -z "$sa_key_path" ]; then
-          warn "未输入路径，请重新选择"
-          continue
-        fi
-        # 去除路径两端可能的引号（拖拽文件时某些终端会自动加引号）
-        sa_key_path="${sa_key_path#\"}"
-        sa_key_path="${sa_key_path%\"}"
-        sa_key_path="${sa_key_path#\'}"
-        sa_key_path="${sa_key_path%\'}"
-        if [ -f "$sa_key_path" ]; then
-          sa_key_content=$(cat "$sa_key_path")
-          if validate_sa_key "$sa_key_content"; then
-            echo "$sa_key_content" > "$INSTALL_DIR/sa-key.json"
-            chmod 600 "$INSTALL_DIR/sa-key.json"
-            success "sa-key.json 已写入: $INSTALL_DIR/sa-key.json"
-            break
-          else
-            error "SA 密钥验证失败，请检查文件内容"
-            continue
-          fi
-        else
-          error "文件不存在: $sa_key_path"
-          continue
-        fi
-        ;;
-      3)
         warn "跳过 SA 密钥配置"
         info "安装完成后，请将 SA 密钥 JSON 文件命名为 sa-key.json"
         info "放到: $INSTALL_DIR/sa-key.json"
         break
         ;;
       *)
-        warn "请输入 1、2 或 3"
+        warn "请输入 1 或 2"
         continue
         ;;
     esac
