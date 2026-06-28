@@ -7,14 +7,22 @@
 set -uo pipefail
 
 # ─── 修复 curl | bash 时 stdin 被占用的问题 ─────────────
-# 检测 stdin 是否被管道占用，如果是则重定向到终端
+# 如果 stdin 不是终端（被管道占用），自动下载到 /tmp 后重新运行
 if [ ! -t 0 ]; then
-  # stdin 不是终端（被管道占用），尝试重定向到 tty
-  if [ -e /dev/tty ]; then
-    exec < /dev/tty
+  TMP_SCRIPT=$(mktemp /tmp/cloudtune-install.XXXXXX.sh 2>/dev/null || echo "/tmp/cloudtune-install.$$.sh")
+  printf "\033[1;33m⚠️  检测到 stdin 被管道占用（curl | bash），自动重新启动交互式安装...\033[0m\n"
+  if command -v curl &>/dev/null; then
+    curl -fsSL "https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh" -o "$TMP_SCRIPT" 2>/dev/null
+  elif command -v wget &>/dev/null; then
+    wget -q "https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh" -O "$TMP_SCRIPT" 2>/dev/null
+  fi
+  if [ -s "$TMP_SCRIPT" ]; then
+    chmod +x "$TMP_SCRIPT"
+    # 用 exec 替换当前进程，并把 stdin 重定向到 /dev/tty
+    exec bash "$TMP_SCRIPT" < /dev/tty
   else
-    # /dev/tty 不可用，提示用户先下载再运行
-    printf "\033[0;31m❌ 请先下载脚本再运行，不要使用 curl | bash 方式：\033[0m\n"
+    rm -f "$TMP_SCRIPT"
+    printf "\033[0;31m❌ 无法自动下载脚本，请手动执行：\033[0m\n"
     printf "   wget https://raw.githubusercontent.com/dakerclaw/CloudTune/main/install.sh\n"
     printf "   bash install.sh\n"
     exit 1
