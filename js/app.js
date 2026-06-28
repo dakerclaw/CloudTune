@@ -17,7 +17,7 @@
     loginError: $('loginError'),
     searchInput: $('searchInput'),
     folderBtn: $('folderBtn'),
-    settingsBtn: $('settingsBtn'),
+    headerSettingsBtn: $('headerSettingsBtn'),
     logoutBtn: $('logoutBtn'),
     tabBtns: document.querySelectorAll('.tab-btn'),
     songsTab: $('songsTab'),
@@ -131,8 +131,12 @@
 
     dom.searchInput.addEventListener('input', onSearchInput);
     dom.folderBtn.addEventListener('click', onFolderClick);
-    dom.settingsBtn.addEventListener('click', onSettingsClick);
-    dom.logoutBtn.addEventListener('click', onLogout);
+    if (dom.headerSettingsBtn) {
+      dom.headerSettingsBtn.addEventListener('click', onSettingsClick);
+    }
+    if (dom.logoutBtn) {
+      dom.logoutBtn.addEventListener('click', onLogout);
+    }
 
     dom.tabBtns.forEach(btn => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
